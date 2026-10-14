@@ -22,11 +22,11 @@ func TestControlAgentEndToEnd(t *testing.T) {
 	shared := bus.NewMemory()
 	defer shared.Close()
 
-	controlID, err := identity.Generate("control", "ops")
+	controlID, err := identity.Generate("control", identity.RoleMaster)
 	if err != nil {
 		t.Fatal(err)
 	}
-	agentID, err := identity.Generate("node-a", "ops")
+	agentID, err := identity.Generate("node-a", identity.RolePeer)
 	if err != nil {
 		t.Fatal(err)
 	}

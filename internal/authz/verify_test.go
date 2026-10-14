@@ -13,7 +13,7 @@ import (
 
 func newSigner(t *testing.T) *identity.Identity {
 	t.Helper()
-	id, err := identity.Generate("master", "ops")
+	id, err := identity.Generate("master", identity.RoleMaster)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}

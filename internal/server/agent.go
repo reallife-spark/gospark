@@ -75,18 +75,21 @@ func (a *App) adoptRegistry(doc *apiv1.NodeRegistry) error {
 	if err := authz.VerifyRegistry(a.masterPub, doc); err != nil {
 		return err
 	}
+	incoming := authz.NewRegistry(doc)
 	a.regMu.Lock()
-	if a.registryDoc != nil && doc.IssuedAtUnix < a.registryDoc.IssuedAtUnix {
-		adopted := a.registryDoc.IssuedAtUnix
-		a.regMu.Unlock()
-		return fmt.Errorf("%w: incoming=%d adopted=%d", authz.ErrRegistryRollback, doc.IssuedAtUnix, adopted)
+	if a.nodeRegistry != nil {
+		if adopted := a.nodeRegistry.LatestIssued(); !incoming.LatestIssued().IsZero() && incoming.LatestIssued().Before(adopted) {
+			a.regMu.Unlock()
+			return fmt.Errorf("%w: incoming=%s adopted=%s", authz.ErrRegistryRollback,
+				incoming.LatestIssued().Format(time.RFC3339), adopted.Format(time.RFC3339))
+		}
 	}
 	a.registryDoc = doc
-	a.nodeRegistry = authz.NewRegistry(doc)
+	a.nodeRegistry = incoming
 	a.regMu.Unlock()
 
 	digest, _ := authz.RegistryDigest(doc)
-	a.log.Info("registry adopted", "nodes", len(doc.Authorizations), "issued", doc.IssuedAtUnix, "digest", short(digest))
+	a.log.Info("registry adopted", "nodes", len(doc.Authorizations), "issued", incoming.LatestIssued().Format(time.RFC3339), "digest", short(digest))
 
 	if !a.registryAllowsSelf() {
 		a.log.Error("this node is revoked or absent in the adopted registry; refusing to serve", "node", a.id.NodeID)

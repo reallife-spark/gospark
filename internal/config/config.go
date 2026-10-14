@@ -26,11 +26,11 @@ type Config struct {
 }
 
 type NodeConfig struct {
-	ID             string   `yaml:"id"`
-	OwnerID        string   `yaml:"owner_id"`
-	KeyFile        string   `yaml:"key_file"`
-	OverlayAddress string   `yaml:"overlay_address"`
-	Capabilities   []string `yaml:"capabilities"`
+	ID           string   `yaml:"id"`
+	Role         string   `yaml:"role"` // master | peer (fabric identity_fields)
+	KeyFile      string   `yaml:"key_file"`
+	OverlayIPv4  string   `yaml:"overlay_ipv4"`
+	Capabilities []string `yaml:"capabilities"`
 }
 
 type BusConfig struct {
@@ -132,14 +132,14 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("GOSPARK_NODE_ID"); v != "" {
 		cfg.Node.ID = v
 	}
-	if v := os.Getenv("GOSPARK_OWNER_ID"); v != "" {
-		cfg.Node.OwnerID = v
+	if v := os.Getenv("GOSPARK_ROLE"); v != "" {
+		cfg.Node.Role = v
 	}
 	if v := os.Getenv("GOSPARK_KEY_FILE"); v != "" {
 		cfg.Node.KeyFile = v
 	}
-	if v := os.Getenv("GOSPARK_OVERLAY_ADDRESS"); v != "" {
-		cfg.Node.OverlayAddress = v
+	if v := os.Getenv("GOSPARK_OVERLAY_IPV4"); v != "" {
+		cfg.Node.OverlayIPv4 = v
 	}
 	if v := os.Getenv("GOSPARK_BUS_URL"); v != "" {
 		cfg.Bus.URL = v

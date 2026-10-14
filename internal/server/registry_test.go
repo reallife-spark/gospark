@@ -21,18 +21,16 @@ func TestRegistryGovernsDispatchAndRevocation(t *testing.T) {
 	shared := bus.NewMemory()
 	defer shared.Close()
 
-	controlID, _ := identity.Generate("control", "ops")
-	agentID, _ := identity.Generate("node-a", "ops")
+	controlID, _ := identity.Generate("control", identity.RoleMaster)
+	agentID, _ := identity.Generate("node-a", identity.RolePeer)
 
+	// The control plane is the Master here, so it signs the entry itself; the
+	// test only supplies the identity and the capability to grant.
 	entry := apiv1.NodeAuthorization{
-		NodeID:       agentID.NodeID,
-		Fingerprint:  agentID.Fingerprint(),
-		PublicKeyB64: agentID.PublicKeyB64(),
+		Identity:     agentID.Projection(),
 		Capabilities: []string{string(authz.CapClusterServe)},
-		IssuedAtUnix: time.Now().Unix(),
 	}
 	doc := &apiv1.NodeRegistry{
-		IssuedAtUnix:   time.Now().Unix(),
 		Authorizations: []apiv1.NodeAuthorization{entry},
 	}
 

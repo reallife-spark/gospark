@@ -58,6 +58,7 @@ func run() error {
 		return fmt.Errorf("control plane key %s has no private half; it cannot sign", *masterKey)
 	}
 	cfg.Node.ID = id.NodeID
+	cfg.Node.Role = id.Role
 
 	pubs, err := parseExecutors(*executors)
 	if err != nil {
@@ -131,9 +132,10 @@ func signTask(id *identity.Identity, op, params string, ttl time.Duration) (apiv
 }
 
 // loadRegistryDoc reads the authorizations the control plane will sign and
-// serve. If the file is a full registry, its issue time and expiry are carried
-// over so a peer handed the same file sees an identical registry; otherwise
-// only the authorization entries are taken and a fresh issue time is stamped.
+// serve. If the file is a full registry it is taken as-is; otherwise its
+// authorization entries are read. Either way the control plane re-signs each
+// entry with its own key (clearing issued_at so every entry gets a fresh,
+// consistent stamp), so a peer handed the file verifies the control's key.
 func loadRegistryDoc(flagPath, cfgPath string) (*apiv1.NodeRegistry, error) {
 	path := flagPath
 	if path == "" {

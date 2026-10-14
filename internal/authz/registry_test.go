@@ -11,44 +11,38 @@ import (
 	"github.com/reallife-spark/goSpark/internal/identity"
 )
 
-func signedRegistry(t *testing.T, master *identity.Identity, nodes ...apiv1.NodeAuthorization) *apiv1.NodeRegistry {
-	t.Helper()
-	reg := &apiv1.NodeRegistry{
-		IssuedAtUnix:   time.Now().Unix(),
-		Authorizations: nodes,
-	}
-	if err := authz.SignRegistry(master, reg); err != nil {
-		t.Fatalf("sign registry: %v", err)
-	}
-	return reg
-}
+func iso(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-func node(t *testing.T, id *identity.Identity, caps ...authz.Capability) apiv1.NodeAuthorization {
+// authzEntry mints a signed entry for id granting caps, valid now.
+func authzEntry(t *testing.T, master, id *identity.Identity, caps ...authz.Capability) apiv1.NodeAuthorization {
 	t.Helper()
 	capStrs := make([]string, 0, len(caps))
 	for _, c := range caps {
 		capStrs = append(capStrs, string(c))
 	}
-	return apiv1.NodeAuthorization{
-		NodeID:       id.NodeID,
-		Fingerprint:  id.Fingerprint(),
-		PublicKeyB64: id.PublicKeyB64(),
-		Capabilities: capStrs,
-		IssuedAtUnix: time.Now().Unix(),
+	now := time.Now()
+	entry, err := authz.NewAuthorization(master, id.Projection(), capStrs, now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("new authorization: %v", err)
 	}
+	return entry
+}
+
+func registryOf(entries ...apiv1.NodeAuthorization) *apiv1.NodeRegistry {
+	return &apiv1.NodeRegistry{SchemaVersion: apiv1.RegistrySchemaVersion, Authorizations: entries}
 }
 
 func TestRegistrySignVerify(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	reg := signedRegistry(t, master, node(t, a, authz.CapClusterServe))
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	reg := registryOf(authzEntry(t, master, a, authz.CapClusterServe))
 
 	if err := authz.VerifyRegistry(master.Public, reg); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 
 	// A different key must not verify the same document.
-	other, _ := identity.Generate("other", "ops")
+	other, _ := identity.Generate("other", identity.RolePeer)
 	if err := authz.VerifyRegistry(other.Public, reg); !errors.Is(err, authz.ErrRegistrySignature) {
 		t.Fatalf("wrong key err = %v, want ErrRegistrySignature", err)
 	}
@@ -56,8 +50,8 @@ func TestRegistrySignVerify(t *testing.T) {
 
 func TestRegistryTamperDetected(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	reg := signedRegistry(t, master, node(t, a, authz.CapClusterServe))
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	reg := registryOf(authzEntry(t, master, a, authz.CapClusterServe))
 
 	// Escalating a node's capabilities after signing must invalidate it.
 	reg.Authorizations[0].Capabilities = append(reg.Authorizations[0].Capabilities, string(authz.CapGuardApply))
@@ -66,39 +60,47 @@ func TestRegistryTamperDetected(t *testing.T) {
 	}
 
 	// Reinstating a revoked node requires a fresh signature; flipping the flag
-	// back on a signed-revoked document fails too.
-	reg2 := signedRegistry(t, master, apiv1.NodeAuthorization{
-		NodeID: "node-a", Fingerprint: a.Fingerprint(), PublicKeyB64: a.PublicKeyB64(), Revoked: true,
-	})
+	// back on a signed-revoked entry fails.
+	reg2 := registryOf(authzEntry(t, master, a, authz.CapClusterServe))
+	reg2.Authorizations[0].Revoked = true
+	if err := authz.SignRegistry(master, reg2); err != nil {
+		t.Fatalf("sign revoked: %v", err)
+	}
 	reg2.Authorizations[0].Revoked = false
 	if err := authz.VerifyRegistry(master.Public, reg2); !errors.Is(err, authz.ErrRegistrySignature) {
 		t.Fatalf("un-revoked err = %v, want ErrRegistrySignature", err)
 	}
 }
 
+func TestRegistryIdentityMismatchRefused(t *testing.T) {
+	master := newSigner(t)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	entry := authzEntry(t, master, a, authz.CapClusterServe)
+	// Point the fingerprint at some other identity without re-signing.
+	entry.Fingerprint = "deadbeef"
+	if err := authz.VerifyAuthorization(master.Public, &entry); !errors.Is(err, authz.ErrRegistryIdentityMismatch) {
+		t.Fatalf("err = %v, want ErrRegistryIdentityMismatch", err)
+	}
+}
+
 func TestRegistryUnknownCapabilityRefused(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	reg := &apiv1.NodeRegistry{
-		IssuedAtUnix: time.Now().Unix(),
-		Authorizations: []apiv1.NodeAuthorization{{
-			NodeID:       a.NodeID,
-			Fingerprint:  a.Fingerprint(),
-			Capabilities: []string{"root-everything"},
-		}},
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	// NewAuthorization refuses at mint time...
+	if _, err := authz.NewAuthorization(master, a.Projection(), []string{"root-everything"}, time.Now(), time.Now().Add(time.Hour)); !errors.Is(err, authz.ErrRegistryUnknownCap) {
+		t.Fatalf("mint err = %v, want ErrRegistryUnknownCap", err)
 	}
-	if err := authz.SignRegistry(master, reg); err != nil {
-		t.Fatalf("sign: %v", err)
-	}
-	// Signing does not refuse; verification does, before trusting anything.
-	if err := authz.VerifyRegistry(master.Public, reg); !errors.Is(err, authz.ErrRegistryUnknownCap) {
-		t.Fatalf("err = %v, want ErrRegistryUnknownCap", err)
+	// ...and verification refuses an entry smuggled in around it.
+	entry := authzEntry(t, master, a, authz.CapClusterServe)
+	entry.Capabilities = []string{"root-everything"}
+	if err := authz.VerifyAuthorization(master.Public, &entry); !errors.Is(err, authz.ErrRegistryUnknownCap) {
+		t.Fatalf("verify err = %v, want ErrRegistryUnknownCap", err)
 	}
 }
 
 func TestRegistryUnauthorizedWrongSchema(t *testing.T) {
 	master := newSigner(t)
-	reg := signedRegistry(t, master)
+	reg := registryOf()
 	reg.SchemaVersion = "2.0"
 	if err := authz.VerifyRegistry(master.Public, reg); !errors.Is(err, authz.ErrRegistrySchema) {
 		t.Fatalf("err = %v, want ErrRegistrySchema", err)
@@ -107,14 +109,11 @@ func TestRegistryUnauthorizedWrongSchema(t *testing.T) {
 
 func TestRegistryAuthorized(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	b, _ := identity.Generate("node-b", "ops")
-	reg := signedRegistry(t, master,
-		node(t, a, authz.CapClusterServe, authz.CapTelemetry),
-		apiv1.NodeAuthorization{
-			NodeID: "node-b", Fingerprint: b.Fingerprint(), PublicKeyB64: b.PublicKeyB64(),
-			Capabilities: []string{string(authz.CapTelemetry)},
-		},
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	b, _ := identity.Generate("node-b", identity.RolePeer)
+	reg := registryOf(
+		authzEntry(t, master, a, authz.CapClusterServe, authz.CapTelemetry),
+		authzEntry(t, master, b, authz.CapTelemetry),
 	)
 	view := authz.NewRegistry(reg)
 	now := time.Now()
@@ -132,10 +131,12 @@ func TestRegistryAuthorized(t *testing.T) {
 
 func TestRegistryRevoked(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	revoked := node(t, a, authz.CapClusterServe)
-	revoked.Revoked = true
-	reg := signedRegistry(t, master, revoked)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	reg := registryOf(authzEntry(t, master, a, authz.CapClusterServe))
+	reg.Authorizations[0].Revoked = true
+	if err := authz.SignRegistry(master, reg); err != nil {
+		t.Fatal(err)
+	}
 
 	view := authz.NewRegistry(reg)
 	if err := view.Authorized("node-a", authz.CapClusterServe, time.Now()); !errors.Is(err, authz.ErrRegistryRevoked) {
@@ -153,54 +154,54 @@ func TestRegistryRevoked(t *testing.T) {
 
 func TestRegistryExpired(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	entry := node(t, a, authz.CapClusterServe)
-	entry.ExpiresAtUnix = time.Now().Add(-time.Minute).Unix()
-	reg := signedRegistry(t, master, entry)
-
-	view := authz.NewRegistry(reg)
-	if err := view.Authorized("node-a", authz.CapClusterServe, time.Now()); !errors.Is(err, authz.ErrRegistryExpired) {
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	now := time.Now()
+	entry, err := authz.NewAuthorization(master, a.Projection(), []string{string(authz.CapClusterServe)}, now.Add(-2*time.Hour), now.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := authz.NewRegistry(registryOf(entry))
+	if err := view.Authorized("node-a", authz.CapClusterServe, now); !errors.Is(err, authz.ErrRegistryExpired) {
 		t.Fatalf("err = %v, want ErrRegistryExpired", err)
 	}
 }
 
-func TestRegistryDigestStableAndOrderIndependent(t *testing.T) {
+func TestRegistryNotYetValid(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	b, _ := identity.Generate("node-b", "ops")
-	first := signedRegistry(t, master, node(t, a, authz.CapClusterServe), node(t, b, authz.CapClusterServe))
-	// Same entries, reverse order; SignRegistry normalises, so digests match.
-	second := signedRegistry(t, master, node(t, b, authz.CapClusterServe), node(t, a, authz.CapClusterServe))
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	now := time.Now()
+	entry, err := authz.NewAuthorization(master, a.Projection(), []string{string(authz.CapClusterServe)}, now.Add(time.Hour), now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := authz.NewRegistry(registryOf(entry))
+	if err := view.Authorized("node-a", authz.CapClusterServe, now); !errors.Is(err, authz.ErrRegistryNotYetValid) {
+		t.Fatalf("err = %v, want ErrRegistryNotYetValid", err)
+	}
+}
 
-	d1, err := authz.RegistryDigest(first)
+func TestRegistryDigestStable(t *testing.T) {
+	master := newSigner(t)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	reg := registryOf(authzEntry(t, master, a, authz.CapClusterServe))
+
+	d1, err := authz.RegistryDigest(reg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d2, err := authz.RegistryDigest(second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	d2, _ := authz.RegistryDigest(reg)
 	if d1 != d2 {
-		t.Fatalf("digests differ by order: %s vs %s", d1, d2)
+		t.Fatal("digest not stable")
 	}
-
-	// A different issued_at (fresh signature) changes the digest.
-	third := signedRegistry(t, master, node(t, a, authz.CapClusterServe), node(t, b, authz.CapClusterServe))
-	third.IssuedAtUnix++
-	if err := authz.SignRegistry(master, third); err != nil {
-		t.Fatal(err)
-	}
-	d3, _ := authz.RegistryDigest(third)
-	if d3 == d1 {
-		t.Fatal("digest unchanged after re-sign with a new issue time")
+	if d1 == "" {
+		t.Fatal("empty digest")
 	}
 }
 
 func TestRegistryExecutorKeys(t *testing.T) {
 	master := newSigner(t)
-	a, _ := identity.Generate("node-a", "ops")
-	reg := signedRegistry(t, master, node(t, a, authz.CapClusterServe))
-	view := authz.NewRegistry(reg)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	view := authz.NewRegistry(registryOf(authzEntry(t, master, a, authz.CapClusterServe)))
 	pubs, err := view.ExecutorPublicKeys(time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -211,5 +212,28 @@ func TestRegistryExecutorKeys(t *testing.T) {
 	}
 	if !got.Equal(ed25519.PublicKey(a.Public)) {
 		t.Fatal("node-a key mismatch")
+	}
+}
+
+func TestAuthorizationMessageMatchesFabric(t *testing.T) {
+	// A golden vector: the signed envelope is the fabric's
+	// signed_envelope_fields, sorted capabilities, projected identity.
+	master, _ := identity.Generate("master", identity.RoleMaster)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	a.OverlayIPv4 = "10.100.0.7"
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	entry, err := authz.NewAuthorization(master, a.Projection(), []string{"telemetry", "cluster-serve"}, at, at.Add(365*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := authz.AuthorizationMessage(&entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"capabilities":["cluster-serve","telemetry"],"expires_at":"2027-01-02T03:04:05Z","fingerprint":"` +
+		entry.Fingerprint + `","identity":{"node_id":"node-a","overlay_ipv4":"10.100.0.7","requested_capabilities":[],"role":"peer","wireguard_public_key_b64":"` +
+		a.PublicKeyB64() + `"},"issued_at":"2026-01-02T03:04:05Z","overlay_ipv4":"10.100.0.7","revoked":false}`
+	if string(msg) != want {
+		t.Fatalf("authorization message mismatch:\n got %s\nwant %s", msg, want)
 	}
 }

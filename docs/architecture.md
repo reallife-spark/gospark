@@ -66,17 +66,28 @@ Authority in this fabric comes from key possession, not a grant: the Master
 signs, a peer verifies. The **node registry** is that statement of authority —
 which nodes may hold which capabilities.
 
-- It is a whole-document signature, not a per-entry one: `SignRegistry` fills
-  `MasterPublicKeyB64`, normalises the entries and signs the canonical bytes
-  with `SignatureB64` blanked. A caller cannot half-sign a registry.
+- It is a **per-entry** signature, not a whole-document one, matching the
+  fabric byte-for-byte: `SignRegistry` signs each entry over the fabric's
+  `signed_envelope_fields` — `fingerprint`, `identity`, sorted `capabilities`,
+  `overlay_ipv4`, `issued_at`, `expires_at`, `revoked` — with that entry's
+  `signature_b64` blanked. The document itself is unsigned, as the fabric ships
+  it.
+- The fingerprint is `sha256` over the canonical JSON of the projected identity
+  (`node_id`, `role`, `wireguard_public_key_b64`, `overlay_ipv4`,
+  `requested_capabilities`); goSpark carries the node's Ed25519 key in the
+  `wireguard_public_key_b64` slot, so the entry binds the node to the key its
+  results are verified against.
 - The trust anchor is the **pinned master public key** a node is configured
   with (`-master-pub`), not the `master_public_key_b64` embedded in the file —
   that field is informational, so a forged registry cannot nominate its own
   signer.
 - `Revoked` sits *inside* the signature, so only the Master can flip it.
-- `IssuedAtUnix` is monotonic: an agent refuses a registry older than the one it
-  already holds (`ErrRegistryRollback`), which stops a replay of a pre-revocation
-  document.
+- `issued_at`/`expires_at` are ISO-8601 and eval order is fabric eval order:
+  unknown node → revoked → expired → not-yet-valid (5 min clock skew) →
+  identity/fingerprint mismatch → bad signature → unknown capability. Rollback
+  is refused by comparing `LatestIssued()` (the newest entry stamp): an agent
+  refuses a registry older than the one it already holds
+  (`ErrRegistryRollback`), which stops a replay of a pre-revocation document.
 - An empty registry authorizes nobody; a control plane with no registry at all
   runs in explicit *open mode* (a logged warning), and an agent with no adopted
   registry is permissive — the legacy single-process posture.
@@ -88,9 +99,9 @@ agent independently refuses a task when its adopted registry does not authorize
 onto the bus is still rejected.
 
 `sparknetctl registry sign|verify|show` mints and inspects registries; a control
-plane loads authorizations from `-registry` (and re-signs them, stamping a fresh
-issue time), while an agent loads the signed file and verifies it against its
-pinned master key.
+plane loads authorizations from `-registry` (and re-signs each entry, clearing
+its `issued_at` to force a fresh stamp), while an agent loads the signed file
+and verifies every entry against its pinned master key.
 
 ## Verification order (`internal/authz`)
 

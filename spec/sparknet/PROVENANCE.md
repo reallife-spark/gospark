@@ -26,9 +26,12 @@ edited in the *same* change as the snapshot, never silently.
   (`known_capabilities`) and the holder-bears-risk set. The master's
   `implied_by_private_key` rights are mirrored as
   `authz.MasterImpliedCapabilities`.
-- **`identity-schema.json`** → `internal/identity`: the fingerprint is derived
-  from `(node_id, owner_id, public_key)`, matching the fabric's canonical
-  identity string.
+- **`identity-schema.json`** → `internal/identity` and `internal/authz`: the
+  projected identity is `(node_id, role, wireguard_public_key_b64, overlay_ipv4,
+  requested_capabilities)`, the fingerprint is `sha256` over its canonical JSON
+  (`sort_keys`, `separators=(",",":")`), and each registry entry is signed per
+  entry over `signed_envelope_fields`. goSpark carries the node's Ed25519 public
+  key in the `wireguard_public_key_b64` slot.
 - **`ports.json`** → default listen addresses in `configs/*.example.yaml`
   (the control-plane gateway and data plane do not collide with reserved peer
   ports).

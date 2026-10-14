@@ -8,11 +8,11 @@
 #     -executors node-a=BASE64PUB,node-b=BASE64PUB
 
 node:
-  # id/owner_id are overwritten from the loaded key file.
+  # id/role are overwritten from the loaded key file.
   id: control
-  owner_id: ""
+  role: master
   key_file: .state/control.key
-  overlay_address: 10.44.0.1
+  overlay_ipv4: 10.44.0.1
   capabilities:
     - telemetry
     - cluster-dispatch

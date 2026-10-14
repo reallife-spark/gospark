@@ -45,38 +45,48 @@ type RegisterNode struct {
 	RegistryDigest string      `json:"registry_digest,omitempty"`
 }
 
+// NodeIdentity is the projected node identity: exactly the fields the fabric
+// fingerprints (contracts/identity-schema.json, `identity_fields`). The
+// fingerprint is sha256 over the canonical JSON of this projection, so every
+// field here participates in it and nothing else does.
+type NodeIdentity struct {
+	NodeID                string   `json:"node_id"`
+	Role                  string   `json:"role"`
+	WireGuardPublicKeyB64 string   `json:"wireguard_public_key_b64"`
+	OverlayIPv4           string   `json:"overlay_ipv4"`
+	RequestedCapabilities []string `json:"requested_capabilities"`
+}
+
 // NodeAuthorization is one Master-signed entry in the node registry: which node
 // this is, what it may hold, and whether it is revoked.
 //
-// It mirrors the fabric's registry entry (contracts/identity-schema.json,
-// "grant"/registry section; see peer-node/manifests/node-authorizations.json).
-// The registry, not the node, is the authority: a peer cannot widen itself, and
-// `revoked` is inside the signed registry so only the Master can flip it.
+// It mirrors the fabric's registry entry byte-for-byte
+// (contracts/identity-schema.json, `signed_envelope_fields`;
+// peer-node/manifests/node-authorizations.json). The *entry itself* is signed —
+// not a whole-registry document — so an attacker with storage write access can
+// neither widen an entry nor reinstate a revoked one: both would need a fresh
+// Master signature. `issued_at`/`expires_at` are ISO-8601 strings, as the fabric
+// emits them.
 type NodeAuthorization struct {
-	NodeID        string   `json:"node_id"`
-	Fingerprint   string   `json:"fingerprint"`
-	PublicKeyB64  string   `json:"public_key_b64"`
-	OverlayIPv4   string   `json:"overlay_ipv4,omitempty"`
-	Capabilities  []string `json:"capabilities"`
-	IssuedAtUnix  int64    `json:"issued_at_unix"`
-	ExpiresAtUnix int64    `json:"expires_at_unix,omitempty"`
-	Revoked       bool     `json:"revoked"`
+	Fingerprint  string       `json:"fingerprint"`
+	Identity     NodeIdentity `json:"identity"`
+	Capabilities []string     `json:"capabilities"`
+	OverlayIPv4  string       `json:"overlay_ipv4"`
+	IssuedAt     string       `json:"issued_at"`
+	ExpiresAt    string       `json:"expires_at"`
+	Revoked      bool         `json:"revoked"`
+	SignatureB64 string       `json:"signature_b64"`
 }
 
-// NodeRegistry is the Master-signed set of node authorizations, distributed to
-// peers over the bus. It is fail-closed: an empty registry authorizes nobody.
-//
-// The whole document is signed by the Master operational key, so an attacker
-// with storage write access can neither widen an entry nor reinstate a revoked
-// one — both would need a fresh signature. IssuedAtUnix increases on every
-// re-sign, which lets a peer refuse a rolled-back (older) registry.
+// NodeRegistry is the set of signed node authorizations, distributed to peers
+// over the bus. Each entry carries its own Master signature; the document
+// itself is unsigned, exactly as the fabric ships it. It is fail-closed: an
+// empty registry authorizes nobody.
 type NodeRegistry struct {
 	SchemaVersion      string              `json:"schema_version"`
 	MasterPublicKeyB64 string              `json:"master_public_key_b64"`
-	IssuedAtUnix       int64               `json:"issued_at_unix"`
-	ExpiresAtUnix      int64               `json:"expires_at_unix,omitempty"`
+	Description        string              `json:"description,omitempty"`
 	Authorizations     []NodeAuthorization `json:"authorizations"`
-	SignatureB64       string              `json:"signature_b64,omitempty"`
 }
 
 // RegistrySchemaVersion is the only accepted registry schema version.

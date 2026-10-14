@@ -53,7 +53,7 @@ func run() error {
 		return err
 	}
 	cfg.Node.ID = id.NodeID
-	cfg.Node.OwnerID = id.OwnerID
+	cfg.Node.Role = id.Role
 
 	regDoc, err := loadRegistryDoc(*registryFile, cfg.Registry.File)
 	if err != nil {

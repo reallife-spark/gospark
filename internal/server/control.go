@@ -78,13 +78,10 @@ func (a *App) setupRegistry(ctx context.Context) error {
 		return nil
 	}
 	// Sign and install under the registry lock: peers (and RegistryDigest) read
-	// the document concurrently, and SignRegistry mutates it in place.
+	// the document concurrently, and SignRegistry mutates it in place. Each
+	// entry is signed individually (the fabric's per-entry scheme); an entry
+	// with no issued_at is stamped now, which advances the rollback guard.
 	a.regMu.Lock()
-	// Stamp a fresh issue time so peers' rollback guards advance monotonically.
-	// An explicit issue time loaded from file is respected.
-	if a.registryDoc.IssuedAtUnix == 0 {
-		a.registryDoc.IssuedAtUnix = time.Now().Unix()
-	}
 	if err := authz.SignRegistry(a.id, a.registryDoc); err != nil {
 		a.regMu.Unlock()
 		return fmt.Errorf("server: sign registry: %w", err)
@@ -136,8 +133,8 @@ func (a *App) publishRegistry(ctx context.Context) error {
 }
 
 // ReSignRegistry updates the authorizations and re-publishes a freshly signed
-// registry — the distribute-registry operation. Bumping IssuedAtUnix is what
-// lets peers accept the change and refuse an older rollback.
+// registry — the distribute-registry operation. Re-signing with a fresh
+// issued_at is what lets peers accept the change and refuse an older rollback.
 func (a *App) ReSignRegistry(ctx context.Context, authorizations []apiv1.NodeAuthorization) (string, error) {
 	a.regMu.Lock()
 	if a.registryDoc == nil {
@@ -145,7 +142,11 @@ func (a *App) ReSignRegistry(ctx context.Context, authorizations []apiv1.NodeAut
 		return "", fmt.Errorf("server: no registry configured to re-sign")
 	}
 	a.registryDoc.Authorizations = authorizations
-	a.registryDoc.IssuedAtUnix = time.Now().Unix()
+	// Clear any carried issue time so SignRegistry stamps a fresh one: a
+	// distribute-registry change must advance the rollback guard.
+	for i := range a.registryDoc.Authorizations {
+		a.registryDoc.Authorizations[i].IssuedAt = ""
+	}
 	if err := authz.SignRegistry(a.id, a.registryDoc); err != nil {
 		a.regMu.Unlock()
 		return "", err
@@ -279,7 +280,7 @@ func (a *App) PublishHealth(ctx context.Context, serving bool) error {
 	h := apiv1.NodeHealth{
 		NodeID:         a.id.NodeID,
 		Fingerprint:    a.id.Fingerprint(),
-		OverlayAddress: a.cfg.Node.OverlayAddress,
+		OverlayAddress: a.cfg.Node.OverlayIPv4,
 		Capabilities:   a.cfg.Node.Capabilities,
 		Serving:        serving,
 		ReportedAtUnix: time.Now().Unix(),

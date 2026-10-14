@@ -62,11 +62,11 @@ func usage() {
 	fmt.Fprint(os.Stderr, `sparknetctl — goSpark control-plane CLI
 
 Usage:
-  sparknetctl keygen     -node ID -owner ID -out FILE
+  sparknetctl keygen     -node ID [-role master|peer] [-overlay IPV4] [-caps a,b] -out FILE
   sparknetctl fingerprint -key FILE
   sparknetctl caps
   sparknetctl ops
-  sparknetctl registry sign   -master-key FILE (-authorizations FILE | -node-key FILE -caps a,b) -out FILE [-issued-at UNIX] [-expires-at UNIX]
+  sparknetctl registry sign   -master-key FILE (-authorizations FILE | -node-key FILE -caps a,b) -out FILE [-ttl 8760h] [-issued-at RFC3339]
   sparknetctl registry verify -registry FILE (-master-pub B64 | -master-key FILE)
   sparknetctl registry show   -registry FILE
   sparknetctl route      -prompt "..." [-caps a,b]
@@ -79,21 +79,25 @@ Usage:
 func cmdKeygen(args []string) error {
 	fs := flag.NewFlagSet("keygen", flag.ExitOnError)
 	node := fs.String("node", "", "node id")
-	owner := fs.String("owner", "", "owner id")
+	role := fs.String("role", identity.RolePeer, "node role: master|peer")
+	overlay := fs.String("overlay", "", "overlay IPv4 address")
+	caps := fs.String("caps", "", "comma-separated requested capabilities")
 	out := fs.String("out", "", "output key file")
 	_ = fs.Parse(args)
 	if *node == "" || *out == "" {
 		return fmt.Errorf("keygen: -node and -out are required")
 	}
-	id, err := identity.Generate(*node, *owner)
+	id, err := identity.Generate(*node, *role)
 	if err != nil {
 		return err
 	}
+	id.OverlayIPv4 = *overlay
+	id.RequestedCapabilities = splitCSV(*caps)
 	if err := id.Save(*out); err != nil {
 		return err
 	}
-	fmt.Printf("node=%s\nfingerprint=%s\nkey_file=%s\npublic_key_b64=%s\n",
-		id.NodeID, id.Fingerprint(), *out, id.PublicKeyB64())
+	fmt.Printf("node=%s\nrole=%s\nfingerprint=%s\nkey_file=%s\npublic_key_b64=%s\n",
+		id.NodeID, id.Role, id.Fingerprint(), *out, id.PublicKeyB64())
 	fmt.Fprintln(os.Stderr, "warning: the key file holds the private half; keep it 0600 and never commit it")
 	return nil
 }
@@ -109,7 +113,7 @@ func cmdFingerprint(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("node=%s\nowner=%s\nfingerprint=%s\n", id.NodeID, id.OwnerID, id.Fingerprint())
+	fmt.Printf("node=%s\nrole=%s\nfingerprint=%s\n", id.NodeID, id.Role, id.Fingerprint())
 	return nil
 }
 
@@ -155,8 +159,8 @@ func cmdRegistrySign(args []string) error {
 	nodeKey := fs.String("node-key", "", "convenience: build a single entry from this node key file")
 	caps := fs.String("caps", "", "comma-separated capabilities for -node-key")
 	out := fs.String("out", "", "output registry file (default stdout)")
-	issued := fs.Int64("issued-at", time.Now().Unix(), "registry issue time (unix seconds)")
-	expires := fs.Int64("expires-at", 0, "optional registry expiry (unix seconds)")
+	ttl := fs.Duration("ttl", authz.DefaultAuthorizationTTL, "authorization lifetime (Go duration)")
+	issuedRaw := fs.String("issued-at", "", "issue time (RFC3339); default now")
 	_ = fs.Parse(args)
 	if *masterKey == "" {
 		return fmt.Errorf("registry sign: -master-key is required")
@@ -164,6 +168,13 @@ func cmdRegistrySign(args []string) error {
 	master, err := identity.Load(*masterKey)
 	if err != nil {
 		return err
+	}
+	issued := time.Now()
+	if *issuedRaw != "" {
+		issued, err = time.Parse(time.RFC3339, *issuedRaw)
+		if err != nil {
+			return fmt.Errorf("registry sign: -issued-at: %w", err)
+		}
 	}
 	var entries []apiv1.NodeAuthorization
 	switch {
@@ -177,21 +188,15 @@ func cmdRegistrySign(args []string) error {
 		if err != nil {
 			return err
 		}
-		entries = []apiv1.NodeAuthorization{{
-			NodeID:       id.NodeID,
-			Fingerprint:  id.Fingerprint(),
-			PublicKeyB64: id.PublicKeyB64(),
-			Capabilities: splitCSV(*caps),
-			IssuedAtUnix: *issued,
-		}}
+		entry, err := authz.NewAuthorization(master, id.Projection(), splitCSV(*caps), issued, issued.Add(*ttl))
+		if err != nil {
+			return err
+		}
+		entries = []apiv1.NodeAuthorization{entry}
 	default:
 		return fmt.Errorf("registry sign: need -authorizations FILE or -node-key FILE")
 	}
-	reg := &apiv1.NodeRegistry{
-		IssuedAtUnix:   *issued,
-		ExpiresAtUnix:  *expires,
-		Authorizations: entries,
-	}
+	reg := &apiv1.NodeRegistry{Authorizations: entries}
 	if err := authz.SignRegistry(master, reg); err != nil {
 		return err
 	}
@@ -236,7 +241,8 @@ func cmdRegistryVerify(args []string) error {
 		return err
 	}
 	digest, _ := authz.RegistryDigest(reg)
-	fmt.Printf("OK nodes=%d digest=%s issued=%d\n", len(reg.Authorizations), digest, reg.IssuedAtUnix)
+	fmt.Printf("OK nodes=%d digest=%s latest_issued=%s\n",
+		len(reg.Authorizations), digest, authz.NewRegistry(reg).LatestIssued().Format(time.RFC3339))
 	return nil
 }
 
@@ -252,14 +258,16 @@ func cmdRegistryShow(args []string) error {
 		return err
 	}
 	digest, _ := authz.RegistryDigest(reg)
-	fmt.Printf("schema=%s master=%s issued=%d nodes=%d digest=%s\n",
-		reg.SchemaVersion, reg.MasterPublicKeyB64, reg.IssuedAtUnix, len(reg.Authorizations), digest)
+	fmt.Printf("schema=%s master=%s latest_issued=%s nodes=%d digest=%s\n",
+		reg.SchemaVersion, reg.MasterPublicKeyB64,
+		authz.NewRegistry(reg).LatestIssued().Format(time.RFC3339), len(reg.Authorizations), digest)
 	for _, e := range reg.Authorizations {
 		state := "active"
 		if e.Revoked {
 			state = "REVOKED"
 		}
-		fmt.Printf("  %s\t%s\tcaps=%v\n", e.NodeID, state, e.Capabilities)
+		fmt.Printf("  %s\t%s\tcaps=%v\tfp=%s\texpires=%s\n",
+			e.Identity.NodeID, state, e.Capabilities, short(e.Fingerprint), e.ExpiresAt)
 	}
 	return nil
 }
@@ -375,6 +383,13 @@ func cmdDecodeBlock(args []string) error {
 	fmt.Printf("elements=%d blocks=%d global_scale=%g digest=%s\nfirst=%v\n",
 		b.NumElements, len(b.BlockScale), b.GlobalScale, b.Digest(), first)
 	return nil
+}
+
+func short(s string) string {
+	if len(s) > 12 {
+		return s[:12]
+	}
+	return s
 }
 
 func splitCSV(s string) []string {

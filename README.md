@@ -113,10 +113,14 @@ bin/sparknet-agent -config configs/agent.example.yaml \
   -key .state/node.key -master-pub "$MASTER_PUB" -registry .state/registry.json
 ```
 
-The trust anchor is the agent's pinned `-master-pub`, not the key embedded in
-the file. `Revoked` and `IssuedAtUnix` live inside the signature, so only the
-Master can revoke, and an agent refuses a replayed older registry. See
-[`docs/architecture.md`](docs/architecture.md) for the mechanism.
+Each entry is signed **per entry** over the fabric's `signed_envelope_fields`
+(`fingerprint`, `identity`, sorted `capabilities`, `overlay_ipv4`, `issued_at`,
+`expires_at`, `revoked`), so the document itself is unsigned — exactly as the
+fabric ships it. The trust anchor is the agent's pinned `-master-pub`, not the
+key embedded in the file. `Revoked` (and the timestamps) live inside each
+entry's signature, so only the Master can revoke, and an agent refuses a
+replayed older registry. See [`docs/architecture.md`](docs/architecture.md) for
+the mechanism.
 
 ## Contract provenance
 

@@ -9,11 +9,11 @@
 #     -master-pub BASE64MASTERPUB
 
 node:
-  # id/owner_id are overwritten from the loaded key file.
+  # id/role are overwritten from the loaded key file.
   id: node-a
-  owner_id: ""
+  role: peer
   key_file: .state/node.key
-  overlay_address: 10.44.0.2
+  overlay_ipv4: 10.44.0.2
   # cluster-serve is required to accept delegated compute; it is sensitive.
   capabilities:
     - telemetry

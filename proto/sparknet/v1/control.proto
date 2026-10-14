@@ -44,10 +44,48 @@ message EscalationDecision {
   bool async_required = 4;          // always true across a WAN boundary
 }
 
-// RegisterNode is the agent -> control handshake. The registry snapshot itself
-// is signed by the Master operational key in the Python fabric; goSpark only
-// consumes it. See contracts/identity-schema.json in the sparknet repo.
+// RegisterNode is the agent -> control handshake. Each registry entry is signed
+// per entry by the Master operational key; goSpark's control plane is that
+// Master (it signs), and its agents consume. See contracts/identity-schema.json
+// in the sparknet repo.
 message RegisterNode {
   NodeHealth health = 1;
   string registry_digest = 2;       // sha256 of the adopted signed registry
+}
+
+// NodeIdentity is the projected node identity: exactly the fields the fabric
+// fingerprints (contracts/identity-schema.json, `identity_fields`). The
+// fingerprint is sha256 over the canonical JSON of this projection.
+//
+// goSpark carries the node's Ed25519 public key in wireguard_public_key_b64 —
+// the slot the contract anchors identity to — so the fingerprint binds the node
+// to the key results are verified against.
+message NodeIdentity {
+  string node_id = 1;
+  string role = 2;                  // "master" | "peer"
+  string wireguard_public_key_b64 = 3;
+  string overlay_ipv4 = 4;
+  repeated string requested_capabilities = 5;
+}
+
+// NodeAuthorization is one Master-signed registry entry, signed *per entry*
+// (not as a whole document). `issued_at`/`expires_at` are ISO-8601 strings.
+message NodeAuthorization {
+  string fingerprint = 1;           // sha256 hex of the projected identity
+  NodeIdentity identity = 2;
+  repeated string capabilities = 3; // sorted; the ceiling this node may hold
+  string overlay_ipv4 = 4;
+  string issued_at = 5;             // ISO-8601
+  string expires_at = 6;            // ISO-8601
+  bool revoked = 7;                 // inside the signature: only the Master flips it
+  string signature_b64 = 8;         // Master operational key over the signed envelope
+}
+
+// NodeRegistry is the set of signed node authorizations. The document itself is
+// unsigned, exactly as the fabric ships manifests/node-authorizations.json.
+message NodeRegistry {
+  string schema_version = 1;
+  string master_public_key_b64 = 2; // informational; verifiers pin the key
+  string description = 3;
+  repeated NodeAuthorization authorizations = 4;
 }
