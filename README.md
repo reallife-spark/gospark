@@ -29,7 +29,7 @@ while a GPU job is in flight.
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
 | `internal/transport` | the HTTP/3 (QUIC) data plane for KV blocks |
 | `internal/router` | edge / DGX / cluster escalation decisions |
-| `internal/gateway` | Go API gateway in front of a local vLLM upstream, SSE-aware |
+| `internal/gateway` | Go API gateway in front of a local vLLM upstream: SSE-aware proxy, `/readyz` readiness probe, `/v1/models` discovery |
 | `internal/ingest` | concurrent vault/git crawl + chunking for local RAG |
 | `internal/bus` | NATS/JetStream-backed bus with an in-memory test double |
 | `internal/config` | YAML config + `GOSPARK_*` env overrides |
@@ -234,6 +234,16 @@ bin/sparknet-control -master-key .state/control.key -executors node-a=<pub> \
 ```
 
 See [`docs/adr/0006-compute-plane-task-bridge.md`](docs/adr/0006-compute-plane-task-bridge.md).
+
+## Serving seam
+
+The gateway is the interactive door to the same engine: it proxies
+`/v1/chat/completions` to vLLM with SSE streaming, tells the truth about whether
+the engine is up (`/healthz` liveness vs `/readyz` readiness), and exposes model
+discovery (`/v1/models`). A model server and an optional Open WebUI reference are
+in [`compute/docker-compose.vllm.yml`](compute/docker-compose.vllm.yml); the
+gateway stays a pure, GPU-free proxy. See
+[`docs/adr/0007-gateway-serving-seam.md`](docs/adr/0007-gateway-serving-seam.md).
 
 ## Contract provenance
 

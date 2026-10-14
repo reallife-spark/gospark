@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/reallife-spark/goSpark/internal/config"
 )
@@ -113,5 +114,70 @@ func TestEnvOverrides(t *testing.T) {
 func TestLoadMissingFileFails(t *testing.T) {
 	if _, err := config.Load(filepath.Join(t.TempDir(), "nope.yaml")); err == nil {
 		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestEnvOverridesGatewayAndCompute(t *testing.T) {
+	t.Setenv("GOSPARK_GATEWAY_MODEL", "Qwen/Qwen2.5-32B-Instruct")
+	t.Setenv("GOSPARK_GATEWAY_READY_PATH", "/health")
+	t.Setenv("GOSPARK_GATEWAY_PROBE_TIMEOUT", "5s")
+	t.Setenv("GOSPARK_COMPUTE_ENDPOINT", "http://127.0.0.1:9090")
+	t.Setenv("GOSPARK_COMPUTE_SECRET", "s")
+	t.Setenv("GOSPARK_COMPUTE_OPERATIONS", "infer, embed")
+	t.Setenv("GOSPARK_COMPUTE_TIMEOUT", "30s")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Gateway.Model != "Qwen/Qwen2.5-32B-Instruct" {
+		t.Errorf("gateway model = %q", cfg.Gateway.Model)
+	}
+	if cfg.Gateway.ReadyPath != "/health" {
+		t.Errorf("gateway ready_path = %q", cfg.Gateway.ReadyPath)
+	}
+	if cfg.Gateway.ProbeTimeout != 5*time.Second {
+		t.Errorf("gateway probe_timeout = %v", cfg.Gateway.ProbeTimeout)
+	}
+	if cfg.Compute.Endpoint != "http://127.0.0.1:9090" || cfg.Compute.Secret != "s" {
+		t.Errorf("compute = %+v", cfg.Compute)
+	}
+	if len(cfg.Compute.Operations) != 2 || cfg.Compute.Operations[0] != "infer" || cfg.Compute.Operations[1] != "embed" {
+		t.Errorf("compute operations = %v", cfg.Compute.Operations)
+	}
+	if cfg.Compute.Timeout != 30*time.Second {
+		t.Errorf("compute timeout = %v", cfg.Compute.Timeout)
+	}
+}
+
+func TestValidateRejectsComputeShadowsSandbox(t *testing.T) {
+	cfg := config.Default()
+	cfg.Compute = config.ComputeConfig{Endpoint: "http://127.0.0.1:9090", Operations: []string{"digest"}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("compute operation shadowing the sandbox should be rejected")
+	}
+}
+
+func TestValidateRejectsEndpointWithoutOperations(t *testing.T) {
+	cfg := config.Default()
+	cfg.Compute = config.ComputeConfig{Endpoint: "http://127.0.0.1:9090"}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("compute endpoint without operations should be rejected")
+	}
+}
+
+func TestValidateRejectsOperationsWithoutEndpoint(t *testing.T) {
+	cfg := config.Default()
+	cfg.Compute = config.ComputeConfig{Operations: []string{"infer"}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("compute operations without an endpoint should be rejected")
+	}
+}
+
+func TestValidateRejectsNegativeProbeTimeout(t *testing.T) {
+	cfg := config.Default()
+	cfg.Gateway.ProbeTimeout = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative gateway.probe_timeout should be rejected")
 	}
 }

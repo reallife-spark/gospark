@@ -43,6 +43,7 @@ transport:
 gateway:
   listen: 127.0.0.1:8081
   upstream: http://127.0.0.1:8000
+  model: Qwen/Qwen2.5-32B-Instruct
 
 mesh:
   interface: wg0

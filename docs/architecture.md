@@ -244,6 +244,20 @@ expose it; `GET /admin/placement` reports it read-only, and
 `sparknet-control -dispatch auto` polls it (after `App.Ready()`) until a node is
 eligible, then dispatches.
 
+## Serving seam (`internal/gateway`)
+
+The gateway is the interactive door to the compute plane. It proxies
+`/v1/chat/completions` to a local vLLM engine, streaming SSE with an explicit
+flush per write and marking event-stream responses `X-Accel-Buffering: no` /
+`Cache-Control: no-cache` so nothing in front buffers the tokens. Liveness
+(`/healthz`) is the process being up and never touches the upstream; readiness
+(`/readyz`) probes the engine's models endpoint (bounded by `gateway.probe_timeout`)
+and answers `503` until it responds. `/v1/models` proxies the live engine, or
+reports the declared `gateway.model` when no upstream is set. `handleRoute`
+exposes the router decision without running the model. The gateway holds no model
+state and links no CUDA; the reference engine + Open WebUI stack is
+`compute/docker-compose.vllm.yml` (ADR 0007).
+
 ## What is intentionally absent
 
 No model, no tensors, no tokenizer, no CUDA. The compute plane is reached two

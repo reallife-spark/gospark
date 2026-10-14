@@ -41,6 +41,12 @@ gateway:
   # The Go API gateway in front of the local compute plane.
   listen: 127.0.0.1:8080
   upstream: http://127.0.0.1:8000
+  # Serving model this gateway fronts; reported by /readyz and /healthz and used
+  # as /v1/models discovery when no upstream is set.
+  model: Qwen/Qwen2.5-32B-Instruct
+  # Upstream path probed by /readyz and the probe timeout (defaults: /v1/models, 2s).
+  ready_path: /v1/models
+  probe_timeout: 2s
 
 mesh:
   interface: wg0

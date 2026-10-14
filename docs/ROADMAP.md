@@ -34,7 +34,7 @@ routes, records or transports is *control/service plane*.
 | Blueprint module | Owner | In goSpark |
 |---|---|---|
 | §3.1 `sparknet-net-setup.sh` — RoCEv2, MTU 9000, PFC/ECN, kernel tuning | out of scope (host/ops) | — (see `internal/mesh` for overlay inspection only) |
-| §3.2 `docker-compose.yml` — departmental vLLM serving | compute plane | **seam**: `internal/gateway` fronts a vLLM upstream via `/v1/chat/completions` |
+| §3.2 `docker-compose.yml` — departmental vLLM serving | compute plane | **seam**: `internal/gateway` fronts a vLLM upstream via `/v1/chat/completions`, with `/readyz` readiness, `/v1/models` discovery and unbuffered SSE; the reference engine stack is `compute/docker-compose.vllm.yml` |
 | §3.3 `sparknet_bridge.py` — departmental dispatch/orchestration bridge | goSpark | `cmd/sparknet-agent` + `internal/server` (verify → execute → attest); the GPU execution half is now wired through the compute seam (`internal/compute` → `compute/compute_worker.py`), so a signed `infer`/`embed` task reaches vLLM and returns an attested result |
 | §3.4 `master_orchestrator.py` — Master Core orchestration/aggregation | goSpark | `cmd/sparknet-control` + `DispatchTask`; aggregation is a **seam**; node selection is capacity-aware via `internal/placement` (`-dispatch auto`) |
 | §3.5 `sparknet_knowledge_sync.py` — knowledge indexer/vector retrieval | goSpark seam | `internal/ingest` (crawl + chunk); embedding/index is **compute plane** |
@@ -44,7 +44,7 @@ routes, records or transports is *control/service plane*.
 | §3.9 `provision_cluster.sh` — node provisioning playbook | out of scope (ops) | — |
 | §3.10 `kv_cache_router.py` — distributed RadixAttention + KV prefetch router | goSpark seam | `internal/router` (decisions) + `internal/kvtransfer` (NVFP4 codec/delta) + `internal/transport` (QUIC); the RadixAttention *tree* is **compute plane** |
 | §3.11 `sparknet_backup.py` — storage/knowledge backup daemon | goSpark seam | not built; the fabric's own signed-registry/ledger is the durable core |
-| §3.12 `docker-compose.webui.yml` — Open WebUI workstation | compute plane | **seam**: `internal/gateway` is the routing/auth endpoint it calls |
+| §3.12 `docker-compose.webui.yml` — Open WebUI workstation | compute plane | **seam**: `internal/gateway` is the routing/auth endpoint it calls; Open WebUI runs in `compute/docker-compose.vllm.yml` (profile `webui`) pointed at the gateway |
 | §3.13 `sparknet_router_pipeline.py` — Open WebUI routing/auth pipeline | goSpark seam | `internal/router` + `internal/gateway`; persona/context injection is **compute plane** |
 | §3.14 `sparknet_e2e_test.py` — end-to-end validation suite | goSpark | `make test`, `make test-nats`, `tests/` integration suites |
 
@@ -65,8 +65,8 @@ routes, records or transports is *control/service plane*.
 - **Signed node registry** — per-entry signatures, revocation, rollback guard,
   live loopback admin surface (`internal/authz/registry.go`,
   `internal/server/admin.go`; ADR 0002/0003).
-- **Service plane** — SSE-aware API gateway in front of vLLM
-  (`internal/gateway`).
+- **Service plane** — SSE-aware API gateway in front of vLLM, with a `/readyz`
+  readiness probe and `/v1/models` discovery (`internal/gateway`; ADR 0007).
 - **Data plane** — NVFP4 (E2M1) codec, delta cache, HTTP/3 QUIC transport
   (`internal/kvtransfer`, `internal/transport`).
 - **GPU telemetry** — NVML metrics + DCGM health via a pure-Go core and a single

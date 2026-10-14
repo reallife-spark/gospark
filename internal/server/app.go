@@ -150,6 +150,9 @@ func New(opts Options) (*App, error) {
 	}
 	a.gw = gateway.New(opts.Config.Gateway.Upstream, a.router)
 	a.gw.LocalCaps = opts.Config.Node.Capabilities
+	a.gw.Model = opts.Config.Gateway.Model
+	a.gw.ReadyPath = opts.Config.Gateway.ReadyPath
+	a.gw.ProbeTimeout = opts.Config.Gateway.ProbeTimeout
 
 	if opts.Config.Compute.Endpoint != "" {
 		ex, err := compute.NewHTTPExecutor(compute.Options{

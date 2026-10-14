@@ -1,0 +1,74 @@
+# Reference compute-plane serving stack: vLLM + Open WebUI.
+#
+# goSpark's Go gateway fronts the vLLM engine here (gateway.upstream in the node
+# config). Nothing in this file is linked into the Go binaries; it is the Python/
+# CUDA side of §3.2 (departmental vLLM serving) and §3.12 (Open WebUI), reached
+# only over HTTP.
+#
+#   docker compose -f docker-compose.vllm.yml up -d vllm
+#   # ...then run the gateway on the host, pointed at the engine:
+#   GOSPARK_GATEWAY_UPSTREAM=http://127.0.0.1:8000 \
+#   GOSPARK_GATEWAY_MODEL=Qwen/Qwen2.5-32B-Instruct bin/sparknet-control -config ...
+#   docker compose -f docker-compose.vllm.yml --profile webui up -d
+#
+# Requires the NVIDIA container toolkit. Adjust --model / HF token as needed.
+
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: sparknet-vllm
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen2.5-32B-Instruct}
+      - --served-model-name
+      - ${VLLM_MODEL:-Qwen/Qwen2.5-32B-Instruct}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      # Expose the KV-cache/prefix metrics a RadixAttention router can consume.
+      - --enable-prefix-caching
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+    # vLLM needs a large shared memory segment for its worker processes.
+    ipc: host
+    shm_size: "16gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/v1/models"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+    restart: unless-stopped
+
+  # Optional: the employee-facing workstation. It talks to the Go gateway
+  # (host), not directly to vLLM, so routing/auth/attribution stay in goSpark.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: sparknet-webui
+    profiles: ["webui"]
+    ports:
+      - "127.0.0.1:3000:8080"
+    environment:
+      # The Go gateway on the host. On Linux the host is reachable at this name.
+      - OPENAI_API_BASE_URL=http://host.docker.internal:8080/v1
+      - OPENAI_API_KEY=${WEBUI_API_KEY:-sparknet}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - open-webui:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  open-webui:

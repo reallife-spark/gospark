@@ -57,6 +57,13 @@ type TransportConfig struct {
 type GatewayConfig struct {
 	Listen   string `yaml:"listen"`
 	Upstream string `yaml:"upstream"` // e.g. http://127.0.0.1:8000 (vLLM)
+	// Model is the serving model this gateway fronts; reported by /readyz and
+	// /healthz and used as /v1/models discovery when no upstream is set.
+	Model string `yaml:"model"`
+	// ReadyPath is the upstream path probed by /readyz (default /v1/models).
+	ReadyPath string `yaml:"ready_path"`
+	// ProbeTimeout bounds the /readyz upstream probe.
+	ProbeTimeout time.Duration `yaml:"probe_timeout"`
 }
 
 type MeshConfig struct {
@@ -206,6 +213,17 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("GOSPARK_GATEWAY_UPSTREAM"); v != "" {
 		cfg.Gateway.Upstream = v
 	}
+	if v := os.Getenv("GOSPARK_GATEWAY_MODEL"); v != "" {
+		cfg.Gateway.Model = v
+	}
+	if v := os.Getenv("GOSPARK_GATEWAY_READY_PATH"); v != "" {
+		cfg.Gateway.ReadyPath = v
+	}
+	if v := os.Getenv("GOSPARK_GATEWAY_PROBE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Gateway.ProbeTimeout = d
+		}
+	}
 	if v := os.Getenv("GOSPARK_MESH_INTERFACE"); v != "" {
 		cfg.Mesh.Interface = v
 	}
@@ -246,6 +264,9 @@ func (c Config) Validate() error {
 	}
 	if err := validateCompute(c.Compute); err != nil {
 		return err
+	}
+	if c.Gateway.ProbeTimeout < 0 {
+		return fmt.Errorf("config: gateway.probe_timeout must be >= 0")
 	}
 	return nil
 }
