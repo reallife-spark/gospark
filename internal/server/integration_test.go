@@ -65,11 +65,10 @@ func TestControlAgentEndToEnd(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() { _ = control.Run(ctx) }()
-	go func() { _ = agent.Run(ctx) }()
 
-	// Wait until the agent is subscribed: it publishes health only after it has
-	// registered its task subscription.
+	// Subscribe before the agent starts: it publishes health only after it has
+	// registered its task subscription, and arming this first means the startup
+	// report can never race ahead of the subscription.
 	health := make(chan apiv1.NodeHealth, 1)
 	if _, err := shared.Subscribe(ctx, bus.Subject("sparknet", bus.KindRegister, ""),
 		func(_ context.Context, _ string, data []byte) error {
@@ -84,6 +83,10 @@ func TestControlAgentEndToEnd(t *testing.T) {
 		}); err != nil {
 		t.Fatal(err)
 	}
+
+	go func() { _ = control.Run(ctx) }()
+	go func() { _ = agent.Run(ctx) }()
+
 	select {
 	case h := <-health:
 		if h.NodeID != agentID.NodeID {

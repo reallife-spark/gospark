@@ -122,7 +122,11 @@ administration would need a signed-request path and is deliberately out of
 scope. A separate read-only route, `GET /admin/gpu`, serves the last GPU
 telemetry per node (see below), and `GET /admin/placement` ranks dispatch
 candidates and reports the choice (see placement, below); neither has a write
-counterpart.
+counterpart. `GET /admin/health` joins the health registry, the authorization
+registry and the telemetry map into one per-node view — last report and age,
+serving/load/capabilities, `authorized`/`revoked`/`expires_at`, and a GPU
+summary — so an operator sees a node's liveness, standing and capacity together
+(`internal/server/health.go`).
 
 ## Verification order (`internal/authz`)
 

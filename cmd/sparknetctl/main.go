@@ -80,6 +80,7 @@ Usage:
   sparknetctl admin revoke -node ID [-unrevoke] [-addr URL]
   sparknetctl admin authorize -node ID -pubkey B64 -caps a,b [-role peer] [-overlay IP] [-ttl 8760h] [-addr URL]
   sparknetctl admin gpu    [-addr URL]
+  sparknetctl admin health [-addr URL]
   sparknetctl admin place  [-caps cluster-serve] [-min-free-mem BYTES] [-max-temp C] [-require-healthy] [-max-age DUR] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
@@ -287,7 +288,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|place")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place")
 	}
 	switch args[0] {
 	case "show":
@@ -298,11 +299,22 @@ func cmdAdmin(args []string) error {
 		return cmdAdminAuthorize(args[1:])
 	case "gpu":
 		return cmdAdminGPU(args[1:])
+	case "health":
+		return cmdAdminHealth(args[1:])
 	case "place":
 		return cmdAdminPlace(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|place)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place)", args[0])
 	}
+}
+
+// cmdAdminHealth asks a running control plane for the joined node-health view:
+// last report, authorization state and GPU telemetry per node.
+func cmdAdminHealth(args []string) error {
+	fs := flag.NewFlagSet("admin health", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	_ = fs.Parse(args)
+	return adminRequest(*addr, http.MethodGet, "/admin/health", nil)
 }
 
 // cmdAdminPlace asks a running control plane to rank dispatch candidates and
