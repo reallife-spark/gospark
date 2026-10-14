@@ -184,6 +184,25 @@ reference worker is `compute/compute_worker.py`. `config.Validate` refuses a
 delegated name that shadows `arith`/`digest`, a duplicate, an `endpoint` with no
 `operations` and vice versa (ADR 0006).
 
+## Ingest seam (`internal/ingest`, `internal/embed`)
+
+Ingestion is the job the design deliberately keeps off the GPU: `internal/ingest`
+crawls a vault or repo concurrently, chunks it and emits stable sha256 digests
+for delta sync. Producing vectors is model work, so it crosses the same kind of
+seam as inference: `internal/embed` is an OpenAI-compatible client that POSTs a
+batch of texts to `/v1/embeddings` (auth in `X-Sparknet-Auth`) and returns
+vectors in input order, reordering by the server's `index` field if it
+reorders, and failing loudly on a short or mismatched result rather than
+silently misaligning an index. `ingest.EmbedChunks` is the driver that pairs
+each chunk with its vector.
+
+`cmd/sparknet-ingest` is the operator entry point: crawl → (optionally) embed →
+write a JSON index. With no `embed.endpoint` it stops at crawl-and-chunk, so the
+seam is additive and the GPU-free path is unchanged. The reference worker serves
+`/v1/embeddings` and `/v1/models` and falls back to a deterministic hashed
+embedding when `SPARKNET_EMBED_ENDPOINT` is unset, so the pipeline is testable
+without an engine (ADR 0008).
+
 ## Configuration
 
 One YAML file plus `GOSPARK_*` env overrides (`internal/config`). Defaults are
@@ -260,7 +279,7 @@ state and links no CUDA; the reference engine + Open WebUI stack is
 
 ## What is intentionally absent
 
-No model, no tensors, no tokenizer, no CUDA. The compute plane is reached two
-ways — the gateway proxies inference requests (`/v1/chat/completions`) and agents
-delegate named operations over the compute seam — and in neither case is the
-runtime linked in.
+No model, no tensors, no tokenizer, no CUDA. The compute plane is reached three
+ways — the gateway proxies inference requests (`/v1/chat/completions`), agents
+delegate named operations over the compute seam, and the ingest driver requests
+embeddings (`/v1/embeddings`) — and in no case is the runtime linked in.

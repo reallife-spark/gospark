@@ -31,6 +31,7 @@ while a GPU job is in flight.
 | `internal/router` | edge / DGX / cluster escalation decisions |
 | `internal/gateway` | Go API gateway in front of a local vLLM upstream: SSE-aware proxy, `/readyz` readiness probe, `/v1/models` discovery |
 | `internal/ingest` | concurrent vault/git crawl + chunking for local RAG |
+| `internal/embed` | OpenAI-compatible embeddings client, the ingest seam to the compute plane (no model, no CUDA) |
 | `internal/bus` | NATS/JetStream-backed bus with an in-memory test double |
 | `internal/config` | YAML config + `GOSPARK_*` env overrides |
 | `internal/mesh` | WireGuard overlay inspection/re-route |
@@ -244,6 +245,40 @@ discovery (`/v1/models`). A model server and an optional Open WebUI reference ar
 in [`compute/docker-compose.vllm.yml`](compute/docker-compose.vllm.yml); the
 gateway stays a pure, GPU-free proxy. See
 [`docs/adr/0007-gateway-serving-seam.md`](docs/adr/0007-gateway-serving-seam.md).
+
+## Knowledge ingest seam
+
+Ingestion is I/O-bound Go work — crawl, chunk, delta-digest — that keeps the
+local RAG pipeline fed while the GPU stays free for inference. Turning text into
+vectors is model work, so it happens beside the GPU: `internal/embed` is an
+OpenAI-compatible client for an embeddings service, and `cmd/sparknet-ingest`
+drives crawl → chunk → embed, pairing every chunk with its vector.
+
+```yaml
+# in an ingest driver's config
+embed:
+  endpoint: http://127.0.0.1:9090
+  secret: <shared with the worker's SPARKNET_SHARED_SECRET>
+  model: sparknet-embed-hash
+  batch: 32
+  timeout: 60s
+```
+
+```sh
+# On the GPU host: the reference worker also serves /v1/embeddings and /v1/models.
+# Elsewhere: crawl a vault and write a vectorized index.
+bin/sparknet-ingest -root /mnt/knowledge -embed-endpoint http://127.0.0.1:9090 \
+  -embed-secret … -out index.json
+# No endpoint: crawl and chunk only.
+bin/sparknet-ingest -root /mnt/knowledge
+```
+
+With no `embed.endpoint`, nothing is vectorized and the crawl/chunk result is
+still usable — the seam is additive. The reference worker
+([`compute/README.md`](compute/README.md)) serves the embeddings routes and falls
+back to a deterministic hashed embedding when no engine is configured, so the
+pipeline can be exercised without a GPU. See
+[`docs/adr/0008-ingest-embedding-seam.md`](docs/adr/0008-ingest-embedding-seam.md).
 
 ## Contract provenance
 

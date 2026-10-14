@@ -37,7 +37,7 @@ routes, records or transports is *control/service plane*.
 | §3.2 `docker-compose.yml` — departmental vLLM serving | compute plane | **seam**: `internal/gateway` fronts a vLLM upstream via `/v1/chat/completions`, with `/readyz` readiness, `/v1/models` discovery and unbuffered SSE; the reference engine stack is `compute/docker-compose.vllm.yml` |
 | §3.3 `sparknet_bridge.py` — departmental dispatch/orchestration bridge | goSpark | `cmd/sparknet-agent` + `internal/server` (verify → execute → attest); the GPU execution half is now wired through the compute seam (`internal/compute` → `compute/compute_worker.py`), so a signed `infer`/`embed` task reaches vLLM and returns an attested result |
 | §3.4 `master_orchestrator.py` — Master Core orchestration/aggregation | goSpark | `cmd/sparknet-control` + `DispatchTask`; aggregation is a **seam**; node selection is capacity-aware via `internal/placement` (`-dispatch auto`) |
-| §3.5 `sparknet_knowledge_sync.py` — knowledge indexer/vector retrieval | goSpark seam | `internal/ingest` (crawl + chunk); embedding/index is **compute plane** |
+| §3.5 `sparknet_knowledge_sync.py` — knowledge indexer/vector retrieval | goSpark seam | `internal/ingest` (crawl + chunk + digest) + `internal/embed` (OpenAI-compatible embeddings client) + `cmd/sparknet-ingest`; the vector store itself stays **compute plane** |
 | §3.6 `cluster_health_monitor.py` — health + compliance audit daemon | goSpark | `internal/gputel` + `cmd/sparknet-gpu` (NVML/DCGM) + `internal/server` `Registry`; `nvidia-smi` replaced by direct library reads |
 | §3.7 `sparknet-cli` — operator CLI | goSpark | `cmd/sparknetctl` |
 | §3.8 `security_gateway.py` — IP whitelist / `X-Sparknet-Auth` gateway | goSpark | `internal/authz` (signed envelopes) + `internal/gateway`; mTLS mesh is **seam** |
@@ -96,8 +96,9 @@ routes, records or transports is *control/service plane*.
    escalation is unchanged, and per-node sharding is compute-plane.
 3. **RadixAttention / KV routing** — the codec and transport are real; the
    prefix tree and prefetch policy are compute-plane.
-4. **Knowledge index** — crawl and chunk exist; embeddings and the vector store
-   are compute-plane.
+4. **Knowledge index** — crawl, chunk, digest and the embeddings client exist
+   (`internal/ingest` + `internal/embed` + `cmd/sparknet-ingest`); the vector
+   store itself is compute-plane.
 5. **gRPC vs bus** — the blueprint uses gRPC endpoints; the fabric uses a
    NATS/JetStream store-and-forward bus (tolerant of an intermittent WireGuard
    WAN). goSpark follows the fabric.

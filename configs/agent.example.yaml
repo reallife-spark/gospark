@@ -66,6 +66,16 @@ compute:
   operations: []
   timeout: 60s
 
+# Embeddings service for the ingest driver (cmd/sparknet-ingest). Empty endpoint
+# leaves ingestion at crawl-and-chunk. The reference worker serves
+# /v1/embeddings and /v1/models.
+embed:
+  endpoint: ""
+  secret: ""
+  model: sparknet-embed-hash
+  batch: 32
+  timeout: 60s
+
 registry:
   # Master-signed registry this node adopts at startup and verifies against its
   # pinned -master-pub. Empty => adopt from the bus, or run permissive if none.

@@ -3,15 +3,18 @@
 
 This is the Python/CUDA side of the goSpark compute seam. The Go agent verifies
 the Master-signed task and signs the attested result; this worker is where the
-heavy work actually happens, beside the GPU. It exposes two routes:
+heavy work actually happens, beside the GPU. It exposes:
 
-    GET  /v1/health   -> {"status": "active", ...}
-    POST /v1/execute  -> {"result": "<string>"}  or  {"error": "<string>"}
+    GET  /v1/health      -> {"status": "active", ...}
+    POST /v1/execute     -> {"result": "<string>"}  or  {"error": "<string>"}
+    GET  /v1/models      -> OpenAI-style model list (embedding model discovery)
+    POST /v1/embeddings  -> OpenAI-compatible batch embeddings
 
-The POST body is {"node_id": ..., "operation": ..., "params_json": ...} and the
-caller authenticates with the shared secret in the X-Sparknet-Auth header. The
-operation set is intentionally closed: only the names below are accepted, so the
-worker cannot be turned into a general remote-code endpoint.
+/v1/execute is the signed-task path; /v1/embeddings is the ingest seam the Go
+knowledge indexer (cmd/sparknet-ingest) drives directly. Both authenticate with
+the shared secret in the X-Sparknet-Auth header. The operation set is
+intentionally closed: only the names below are accepted, so the worker cannot be
+turned into a general remote-code endpoint.
 
 Operations:
     infer  params {"prompt": str, "max_tokens": int?, "temperature": float?}
@@ -39,6 +42,11 @@ API_KEY_NAME = "X-Sparknet-Auth"
 SHARED_SECRET = os.getenv("SPARKNET_SHARED_SECRET", "")
 VLLM_ENDPOINT = os.getenv("VLLM_ENDPOINT", "http://127.0.0.1:8000/v1/chat/completions")
 VLLM_MODEL = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-32B-Instruct")
+# Optional OpenAI-compatible embeddings engine. Empty keeps the deterministic
+# hashed reference embedding (no GPU required); set it to hit a real model.
+EMBED_ENDPOINT = os.getenv("SPARKNET_EMBED_ENDPOINT", "")
+EMBED_MODEL = os.getenv("SPARKNET_EMBED_MODEL", "sparknet-embed-hash")
+EMBED_DIM = int(os.getenv("SPARKNET_EMBED_DIM", "256"))
 REQUIRE_VLLM = os.getenv("SPARKNET_REQUIRE_VLLM", "0") == "1"
 NODE_NAME = os.uname().nodename
 
@@ -72,7 +80,75 @@ async def health() -> dict:
         "operations": sorted(OPERATIONS),
         "vllm": VLLM_ENDPOINT,
         "require_vllm": REQUIRE_VLLM,
+        "embed_model": EMBED_MODEL,
+        "embed_endpoint": EMBED_ENDPOINT or "stub",
     }
+
+
+@app.get("/v1/models")
+async def models(request: Request) -> dict:
+    """Discovery endpoint; also the readiness probe the Go embedder waits on."""
+    _authorize(request)
+    return {
+        "object": "list",
+        "data": [{"id": EMBED_MODEL, "object": "model"}],
+    }
+
+
+@app.post("/v1/embeddings")
+async def embeddings(request: Request) -> JSONResponse:
+    """OpenAI-compatible batch embeddings for the ingest seam."""
+    _authorize(request)
+    try:
+        body = await request.json()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc}") from exc
+
+    raw = body.get("input", "")
+    if isinstance(raw, str):
+        texts = [raw]
+    elif isinstance(raw, list):
+        texts = [str(item) for item in raw]
+    else:
+        raise HTTPException(status_code=400, detail="input must be a string or a list of strings")
+    model = body.get("model") or EMBED_MODEL
+
+    if EMBED_ENDPOINT:
+        try:
+            vectors = await _proxy_embeddings(texts, model)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(status_code=502, content={"error": f"embeddings upstream failed: {exc}"})
+    else:
+        vectors = [_embed_vector(text, EMBED_DIM) for text in texts]
+
+    data = [
+        {"object": "embedding", "index": i, "embedding": vec}
+        for i, vec in enumerate(vectors)
+    ]
+    return JSONResponse(
+        status_code=200,
+        content={
+            "object": "list",
+            "data": data,
+            "model": model,
+            "usage": {"prompt_tokens": 0, "total_tokens": 0},
+        },
+    )
+
+
+async def _proxy_embeddings(texts: list[str], model: str) -> list[list[float]]:
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            EMBED_ENDPOINT,
+            json={"model": model, "input": texts},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    items = sorted(data["data"], key=lambda item: item.get("index", 0))
+    return [[float(x) for x in item["embedding"]] for item in items]
+
 
 
 @app.post("/v1/execute")
@@ -141,13 +217,23 @@ def _stub_infer(prompt: str, cause: Exception) -> str:
 
 
 def _embed(params: dict) -> str:
-    """Reference embedding: a hashed bag-of-words projected to a fixed vector.
+    """Reference embedding for the signed-task `embed` op.
 
-    Real deployments replace this with the model's embedding endpoint; the
-    contract (a JSON array of floats as the result string) is what matters.
+    Returns the vector as a JSON string (the /v1/execute result is always a
+    string). The /v1/embeddings route returns the same vectors in OpenAI shape.
     """
     text = str(params.get("text", ""))
-    dim = int(params.get("dim", 256))
+    dim = int(params.get("dim", EMBED_DIM))
+    return json.dumps(_embed_vector(text, dim))
+
+
+def _embed_vector(text: str, dim: int) -> list[float]:
+    """Deterministic hashed bag-of-words projected to a fixed dimension.
+
+    Real deployments replace this with the model's embedding endpoint; the
+    contract (an L2-normalized list of floats) is what matters.
+    """
+    dim = dim or EMBED_DIM
     vector = [0.0] * dim
     for token in text.lower().split():
         h = hashlib.sha256(token.encode("utf-8")).digest()
@@ -155,7 +241,7 @@ def _embed(params: dict) -> str:
             idx = struct.unpack("<Q", h[i : i + 8])[0] % dim
             vector[idx] += 1.0
     norm = math.sqrt(sum(v * v for v in vector)) or 1.0
-    return json.dumps([round(v / norm, 6) for v in vector])
+    return [round(v / norm, 6) for v in vector]
 
 
 if __name__ == "__main__":

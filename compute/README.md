@@ -21,8 +21,14 @@ Master-signed task and signs the attested result; this worker — the blueprint'
 - `GET /v1/health` → `200 {"status":"active","operations":[...]}`.
 - `POST /v1/execute` with `{"node_id","operation","params_json"}` →
   `200 {"result":"<string>"}` or `{"error":"<string>"}`.
+- `GET /v1/models` → OpenAI-style model list (also the readiness probe the Go
+  embedder waits on).
+- `POST /v1/embeddings` with `{"model?","input": <string|[string]>}` →
+  OpenAI-compatible `{"data":[{"index","embedding"}]}`. This is the ingest seam
+  `cmd/sparknet-ingest` drives directly; it is not a signed task.
 - Auth: the shared secret in header `X-Sparknet-Auth`, matching the node's
-  `compute.secret`. An empty secret disables the check — use it only on loopback.
+  `compute.secret` (or `embed.secret`). An empty secret disables the check — use
+  it only on loopback.
 
 The Go side (`internal/compute`, wired into `internal/server`) routes an
 operation to the worker only if the node's `config.compute.operations` names it.

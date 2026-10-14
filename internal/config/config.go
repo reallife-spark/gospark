@@ -24,6 +24,7 @@ type Config struct {
 	Registry  RegistryConfig  `yaml:"registry"`
 	Admin     AdminConfig     `yaml:"admin"`
 	Compute   ComputeConfig   `yaml:"compute"`
+	Embed     EmbedConfig     `yaml:"embed"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -117,6 +118,22 @@ type ComputeConfig struct {
 	Timeout    time.Duration `yaml:"timeout"`
 }
 
+// EmbedConfig points the ingest pipeline at an OpenAI-compatible embedding
+// service on the compute plane. Empty Endpoint (the default) leaves ingestion
+// crawl-and-chunk only.
+type EmbedConfig struct {
+	// Endpoint is the embeddings server base URL, e.g. http://127.0.0.1:9090.
+	Endpoint string `yaml:"endpoint"`
+	// Secret is sent as X-Sparknet-Auth. Empty sends no header.
+	Secret string `yaml:"secret"`
+	// Model is the embedding model name. Empty lets the server choose.
+	Model string `yaml:"model"`
+	// Batch caps inputs per request.
+	Batch int `yaml:"batch"`
+	// Timeout bounds one embeddings request.
+	Timeout time.Duration `yaml:"timeout"`
+}
+
 // Default returns the built-in defaults before any file or env override.
 func Default() Config {
 	return Config{
@@ -138,6 +155,10 @@ func Default() Config {
 			MaxNodes:          4,
 		},
 		Log: LogConfig{Level: "info", Format: "text"},
+		Embed: EmbedConfig{
+			Batch:   32,
+			Timeout: 60 * time.Second,
+		},
 	}
 }
 
@@ -204,6 +225,25 @@ func applyEnv(cfg *Config) {
 			cfg.Compute.Timeout = d
 		}
 	}
+	if v := os.Getenv("GOSPARK_EMBED_ENDPOINT"); v != "" {
+		cfg.Embed.Endpoint = v
+	}
+	if v := os.Getenv("GOSPARK_EMBED_SECRET"); v != "" {
+		cfg.Embed.Secret = v
+	}
+	if v := os.Getenv("GOSPARK_EMBED_MODEL"); v != "" {
+		cfg.Embed.Model = v
+	}
+	if v := os.Getenv("GOSPARK_EMBED_BATCH"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Embed.Batch = n
+		}
+	}
+	if v := os.Getenv("GOSPARK_EMBED_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Embed.Timeout = d
+		}
+	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v
 	}
@@ -268,6 +308,9 @@ func (c Config) Validate() error {
 	if c.Gateway.ProbeTimeout < 0 {
 		return fmt.Errorf("config: gateway.probe_timeout must be >= 0")
 	}
+	if err := validateEmbed(c.Embed); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -305,6 +348,16 @@ func validateCompute(c ComputeConfig) error {
 	}
 	if c.Timeout < 0 {
 		return fmt.Errorf("config: compute.timeout must be >= 0")
+	}
+	return nil
+}
+
+func validateEmbed(c EmbedConfig) error {
+	if c.Batch < 0 {
+		return fmt.Errorf("config: embed.batch must be >= 0")
+	}
+	if c.Timeout < 0 {
+		return fmt.Errorf("config: embed.timeout must be >= 0")
 	}
 	return nil
 }
