@@ -19,6 +19,38 @@ type NodeHealth struct {
 	KVCacheBytes    uint64   `json:"kv_cache_bytes,omitempty"`
 	Serving         bool     `json:"serving"`
 	ReportedAtUnix  int64    `json:"reported_at_unix"`
+	// GPUTelemetry is the node's GPU snapshot, reported by the sparknet-gpu
+	// sidecar. It is optional and additive: an agent with no GPU backend simply
+	// leaves it nil. It is telemetry, never an authority message.
+	GPUTelemetry *GpuTelemetry `json:"gpu_telemetry,omitempty"`
+}
+
+// GpuMetrics is one GPU's telemetry (NVML metrics, optionally a DCGM health
+// verdict). Empty numeric fields are omitted, so a partial reading stays small.
+type GpuMetrics struct {
+	Index           uint32 `json:"index"`
+	Name            string `json:"name,omitempty"`
+	UUID            string `json:"uuid,omitempty"`
+	TempC           uint32 `json:"temp_c,omitempty"`
+	MemUsedBytes    uint64 `json:"mem_used_bytes,omitempty"`
+	MemTotalBytes   uint64 `json:"mem_total_bytes,omitempty"`
+	UtilPct         uint32 `json:"util_pct,omitempty"`
+	MemUtilPct      uint32 `json:"mem_util_pct,omitempty"`
+	PowerMilliwatts uint32 `json:"power_milliwatts,omitempty"`
+	SMClockMHz      uint32 `json:"sm_clock_mhz,omitempty"`
+	MemClockMHz     uint32 `json:"mem_clock_mhz,omitempty"`
+	Health          string `json:"health,omitempty"`
+}
+
+// GpuTelemetry is a node's GPU snapshot. Available is false when no collector
+// could read the hardware, in which case Reason explains why and GPUs is empty.
+type GpuTelemetry struct {
+	Source          string       `json:"source,omitempty"`
+	Available       bool         `json:"available"`
+	Reason          string       `json:"reason,omitempty"`
+	DriverVersion   string       `json:"driver_version,omitempty"`
+	GPUs            []GpuMetrics `json:"gpus,omitempty"`
+	CollectedAtUnix int64        `json:"collected_at_unix,omitempty"`
 }
 
 // EscalationTarget is where a prompt should be resolved.

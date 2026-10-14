@@ -19,8 +19,10 @@ while a GPU job is in flight.
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |
 | `cmd/sparknet-agent` | a node: reports health, verifies signed tasks, executes a closed operation whitelist, returns attested results |
 | `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify/revoke, live admin show/revoke, block decode/send |
+| `cmd/sparknet-gpu` | GPU-telemetry sidecar: the one cgo binary, links NVML (go-nvlib) + DCGM (go-dcgm), publishes a node's GPU snapshot on the health subject |
 | `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary + the signed node registry |
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
+| `internal/gputel` | pure-Go GPU telemetry: `Collector`/`Snapshot` types, registry, `Null`, `Multi`, and the wire projection (no GPU link) |
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
 | `internal/transport` | the HTTP/3 (QUIC) data plane for KV blocks |
 | `internal/router` | edge / DGX / cluster escalation decisions |
@@ -45,12 +47,14 @@ computation was *permitted*.
 ## Build and test
 
 ```sh
-make build          # bin/sparknet-control, bin/sparknet-agent, bin/sparknetctl
+make build          # bin/sparknet-control, bin/sparknet-agent, bin/sparknetctl (CGO_ENABLED=0)
+make build-gpu      # bin/sparknet-gpu — the cgo GPU sidecar (links NVML/DCGM)
 make test           # all tests
 make ci             # fmt-check + vet + race tests
 ```
 
-Requires Go 1.27+.
+Requires Go 1.27+. The core binaries build with `CGO_ENABLED=0` (ADR 0001); the
+GPU sidecar is the only cgo binary (ADR 0004).
 
 ## Run a two-process demo (in-memory bus)
 
@@ -58,8 +62,8 @@ Requires Go 1.27+.
 make build
 
 # Mint the control-plane key and a node key.
-bin/sparknetctl keygen -node control -owner ops -out .state/control.key
-bin/sparknetctl keygen -node node-a  -owner ops -out .state/node.key
+bin/sparknetctl keygen -node control -role master -out .state/control.key
+bin/sparknetctl keygen -node node-a  -role peer   -out .state/node.key
 
 MASTER_PUB=$(bin/sparknetctl fingerprint -key .state/control.key >/dev/null; \
   python3 -c "import json;print(json.load(open('.state/control.key'))['public_key_b64'])")
@@ -124,6 +128,7 @@ bin/sparknet-agent -config configs/agent.example.yaml \
 bin/sparknetctl admin show      -addr http://127.0.0.1:8899
 bin/sparknetctl admin authorize -node node-b -pubkey "$NODE_B_PUB" -caps cluster-serve
 bin/sparknetctl admin revoke    -node node-a         # or -unrevoke to reinstate
+bin/sparknetctl admin gpu       -addr http://127.0.0.1:8899   # read-only GPU telemetry
 ```
 
 Each entry is signed **per entry** over the fabric's `signed_envelope_fields`
@@ -134,6 +139,31 @@ key embedded in the file. `Revoked` (and the timestamps) live inside each
 entry's signature, so only the Master can revoke, and an agent refuses a
 replayed older registry. See [`docs/architecture.md`](docs/architecture.md) for
 the mechanism.
+
+## GPU telemetry (read-only)
+
+GPU state is **telemetry, never authority**. A per-host sidecar — the one cgo
+binary — reads NVML (metrics) and DCGM (health) and publishes a `NodeHealth`
+carrying a `GpuTelemetry` on the `sparknet.health` subject; the control plane
+records it and serves it read-only. A health report carries no capabilities and
+grants nothing.
+
+```sh
+# Print one snapshot (works even with no GPU: reports available=false + reason).
+bin/sparknet-gpu -once -node-id node-a -text
+
+# Publish to the control plane every 30s over the same bus as everything else.
+bin/sparknet-gpu -watch -node-id node-a -interval 30s -config configs/gpu-sidecar.example.yaml
+
+# Read the last snapshot per node back from the control plane.
+bin/sparknetctl admin gpu -addr http://127.0.0.1:8899
+```
+
+The core binaries are pure Go and compile with `CGO_ENABLED=0`; only
+`cmd/sparknet-gpu` links a GPU library, and it *builds* on a driverless host and
+*degrades at runtime* to `available=false` with a reason. The NVIDIA Go
+libraries are consumed by path (`require` + local `replace`); see
+[`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md).
 
 ## Contract provenance
 
@@ -146,7 +176,9 @@ When a snapshot moves, the mirrored Go in `internal/authz` and
 ## Status
 
 First-pass scaffold + control-plane core. The control/data-plane split, the
-signed-envelope verification, the NVFP4 codec and the QUIC transport are real
-and tested. Model inference is deliberately **not** here — that is the compute
-plane. See [`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md)
+signed-envelope verification, the NVFP4 codec, the QUIC transport, the live
+admin surface and GPU telemetry (via the cgo sidecar) are real and tested. Model
+inference is deliberately **not** here — that is the compute plane. See
+[`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md) and
+[`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md)
 for the decisions and their consequences.

@@ -78,6 +78,7 @@ Usage:
   sparknetctl admin show  [-addr URL]
   sparknetctl admin revoke -node ID [-unrevoke] [-addr URL]
   sparknetctl admin authorize -node ID -pubkey B64 -caps a,b [-role peer] [-overlay IP] [-ttl 8760h] [-addr URL]
+  sparknetctl admin gpu    [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -284,7 +285,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu")
 	}
 	switch args[0] {
 	case "show":
@@ -293,9 +294,18 @@ func cmdAdmin(args []string) error {
 		return cmdAdminRevoke(args[1:])
 	case "authorize":
 		return cmdAdminAuthorize(args[1:])
+	case "gpu":
+		return cmdAdminGPU(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu)", args[0])
 	}
+}
+
+func cmdAdminGPU(args []string) error {
+	fs := flag.NewFlagSet("admin gpu", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	_ = fs.Parse(args)
+	return adminRequest(*addr, http.MethodGet, "/admin/gpu", nil)
 }
 
 func cmdAdminShow(args []string) error {

@@ -83,6 +83,12 @@ type App struct {
 
 	registry *Registry // node health reports (control plane)
 
+	// gpu holds the last GPU telemetry per node, reported by the sparknet-gpu
+	// sidecar on the health subject. It is separate from `registry` so a
+	// telemetry-only report cannot clobber an agent's full health record.
+	gpu   map[string]apiv1.GpuTelemetry
+	gpuMu sync.RWMutex
+
 	// nodeRegistry is the authorized-nodes view: authored and served by the
 	// control plane, adopted and enforced by the agent.
 	nodeRegistry *authz.Registry

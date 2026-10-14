@@ -64,6 +64,9 @@ func (a *App) runControl(ctx context.Context) error {
 	if _, err := a.bus.Subscribe(ctx, a.subj(bus.KindResult), a.onResult); err != nil {
 		return fmt.Errorf("server: subscribe result: %w", err)
 	}
+	if err := a.subscribeGPU(ctx); err != nil {
+		return err
+	}
 	a.log.Info("control plane ready", "node", a.id.NodeID, "root", a.cfg.Bus.SubjectRoot)
 	return nil
 }

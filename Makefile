@@ -7,7 +7,8 @@ PKGS := ./...
 .PHONY: help
 help:
 	@echo "goSpark targets:"
-	@echo "  make build        build all binaries into $(BIN)/"
+	@echo "  make build        build the pure-Go binaries into $(BIN)/ (CGO_ENABLED=0)"
+	@echo "  make build-gpu    build the cgo GPU sidecar (sparknet-gpu, links NVML/DCGM)"
 	@echo "  make test         run all tests"
 	@echo "  make test-race    run tests with the race detector"
 	@echo "  make test-nats    run the NATS/JetStream integration tests"
@@ -21,12 +22,22 @@ help:
 	@echo "  make keys-check   refuse if a key-shaped file is tracked"
 	@echo "  make clean        remove build output"
 
+# The core binaries are deliberately built with CGO_ENABLED=0: they are the
+# static, GPU-free control/service plane (ADR 0001). The GPU sidecar is the only
+# cgo binary and is built separately by build-gpu.
 .PHONY: build
 build:
 	@mkdir -p $(BIN)
-	$(GO) build -o $(BIN)/sparknet-control ./cmd/sparknet-control
-	$(GO) build -o $(BIN)/sparknet-agent ./cmd/sparknet-agent
-	$(GO) build -o $(BIN)/sparknetctl ./cmd/sparknetctl
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-control ./cmd/sparknet-control
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-agent ./cmd/sparknet-agent
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknetctl ./cmd/sparknetctl
+
+# The GPU telemetry sidecar is the one cgo binary: it links NVML (go-nvlib) and
+# DCGM (go-dcgm) and degrades to "unavailable" on a host with no driver.
+.PHONY: build-gpu
+build-gpu:
+	@mkdir -p $(BIN)
+	CGO_ENABLED=1 $(GO) build -o $(BIN)/sparknet-gpu ./cmd/sparknet-gpu
 
 .PHONY: test
 test:

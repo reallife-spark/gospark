@@ -25,8 +25,8 @@ goSpark is two cooperating processes over two planes.
 ## The two roles
 
 - **control** (`server.RoleControl`) holds the operational signing key. It
-  subscribes to `sparknet.register` and `sparknet.result`, keeps a registry of
-  node health, and dispatches tasks. It never executes them.
+  subscribes to `sparknet.register`, `sparknet.result` and `sparknet.health`,
+  keeps a registry of node health, and dispatches tasks. It never executes them.
 - **agent** (`server.RoleAgent`) holds a node identity but no authority. It
   subscribes to its own `sparknet.task.<node_id>`, verifies the task against the
   control plane's public key, runs a whitelisted operation, and signs the
@@ -119,7 +119,8 @@ indistinguishable on the wire from a config-driven distribute. Because the
 process holds the Master key, the surface has full registry authority and
 refuses to bind any non-loopback address (`requireLoopback`); remote
 administration would need a signed-request path and is deliberately out of
-scope.
+scope. A separate read-only route, `GET /admin/gpu`, serves the last GPU
+telemetry per node (see below); it has no write counterpart.
 
 ## Verification order (`internal/authz`)
 
@@ -161,6 +162,31 @@ agent into a general remote-code endpoint.
 One YAML file plus `GOSPARK_*` env overrides (`internal/config`). Defaults are
 explicit; `Validate` rejects a cluster token floor below the edge ceiling, a
 non-positive chunk size and an unknown log level.
+
+## GPU telemetry (`internal/gputel`)
+
+GPU state is **telemetry, never authority**, and it is deliberately outside the
+core binaries. `internal/gputel` is pure Go: it defines `Collector`, the
+`GPU`/`Health`/`Snapshot` types, a `Null` collector, a merge-on-read `Multi`, a
+self-registering backend table, and the one wire projection (`Snapshot.Wire`).
+It links no GPU library. The cgo backends (`gputel/nvml`, `gputel/dcgm`) sit
+behind build tags with non-cgo stubs, and only `cmd/sparknet-gpu` imports them —
+so `make build` stays `CGO_ENABLED=0` (ADR 0001) and the sidecar is the single
+cgo binary (ADR 0004).
+
+The sidecar collects a snapshot and, in `-watch` mode, publishes a `NodeHealth`
+carrying a `GpuTelemetry` on the previously-unused `sparknet.health` subject, as
+a `RegisterNode`. The control plane's `onGPUHealth` records it in a map keyed by
+node id — **separate from the agent `Registry`**, so a telemetry-only report can
+never clobber an agent's full health record — and does *not* verify it as a
+signed envelope, because a telemetry report carries no capability and grants
+nothing. It is read back through the read-only `GET /admin/gpu` (and
+`sparknetctl admin gpu`); there is no write counterpart.
+
+A missing driver or a `CGO_ENABLED=0` build is a normal, reported condition: the
+sidecar builds on a driverless host and answers `available=false` with a reason
+(`nvml: … ERROR_LIBRARY_NOT_FOUND`, `dcgm: … libdcgm.so.4 not found`) rather
+than crashing.
 
 ## What is intentionally absent
 

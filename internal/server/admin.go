@@ -43,7 +43,19 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/registry", a.handleAdminRegistry)
 	mux.HandleFunc("/admin/registry/revoke", a.handleAdminRevoke)
 	mux.HandleFunc("/admin/registry/authorize", a.handleAdminAuthorize)
+	mux.HandleFunc("/admin/gpu", a.handleAdminGPU)
 	return mux
+}
+
+// handleAdminGPU serves GET /admin/gpu: the last GPU telemetry per node, as
+// reported by the sparknet-gpu sidecar. It is read-only; telemetry is never
+// authority, so there is no write counterpart.
+func (a *App) handleAdminGPU(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, a.GPUSnapshot())
 }
 
 // AdminAuthorize grants or updates one node's capabilities on the live

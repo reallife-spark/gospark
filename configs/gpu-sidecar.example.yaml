@@ -1,0 +1,29 @@
+# goSpark GPU-telemetry sidecar example configuration.
+#
+# The sidecar reads only node.id, node.overlay_ipv4 and the bus.* keys; it starts
+# no servers and holds no authority. Start it with:
+#
+#   make build-gpu
+#   bin/sparknet-gpu -config configs/gpu-sidecar.example.yaml -watch -interval 30s
+#
+# On a host with no NVIDIA driver it still runs and reports available=false with
+# a reason. Without bus.url it prints/publishes on an in-memory bus (single
+# process only); set bus.url to the same NATS/JetStream server the control plane
+# uses so the snapshot reaches `sparknetctl admin gpu`.
+
+node:
+  # The node id this telemetry is reported as (also overridable with -node-id).
+  id: node-a
+  role: peer
+  overlay_ipv4: 10.44.0.2
+
+bus:
+  # Empty url => in-memory bus. For a real deployment point at the control
+  # plane's NATS server, e.g. nats://10.44.0.1:4222.
+  url: ""
+  subject_root: sparknet
+  stream: SPARKNET
+
+log:
+  level: info
+  format: text

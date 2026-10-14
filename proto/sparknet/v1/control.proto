@@ -26,6 +26,36 @@ message NodeHealth {
   uint64 kv_cache_bytes = 7;
   bool serving = 8;                 // compute plane reachable
   int64 reported_at_unix = 9;
+  GpuTelemetry gpu_telemetry = 10;  // optional; set by the sparknet-gpu sidecar
+}
+
+// GpuMetrics is one GPU's telemetry (NVML metrics, optionally a DCGM health
+// verdict). Empty numeric fields are omitted, so a partial reading stays small.
+message GpuMetrics {
+  uint32 index = 1;
+  string name = 2;
+  string uuid = 3;
+  uint32 temp_c = 4;
+  uint64 mem_used_bytes = 5;
+  uint64 mem_total_bytes = 6;
+  uint32 util_pct = 7;
+  uint32 mem_util_pct = 8;
+  uint32 power_milliwatts = 9;
+  uint32 sm_clock_mhz = 10;
+  uint32 mem_clock_mhz = 11;
+  string health = 12;               // DCGM verdict: Healthy | Warning | Failure | N/A
+}
+
+// GpuTelemetry is a node's GPU snapshot. `available` is false when no collector
+// could read the hardware, in which case `reason` explains why and `gpus` is
+// empty. It is telemetry, never an authority message.
+message GpuTelemetry {
+  string source = 1;                // which backend answered, e.g. "dcgm+nvml"
+  bool available = 2;
+  string reason = 3;
+  string driver_version = 4;
+  repeated GpuMetrics gpus = 5;
+  int64 collected_at_unix = 6;
 }
 
 // EscalationDecision is emitted by the router. It is advisory to the caller and
