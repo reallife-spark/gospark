@@ -18,7 +18,7 @@ while a GPU job is in flight.
 |---|---|
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |
 | `cmd/sparknet-agent` | a node: reports health, verifies signed tasks, executes a closed operation whitelist, returns attested results |
-| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify, block decode/send |
+| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify/revoke, live admin show/revoke, block decode/send |
 | `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary + the signed node registry |
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
@@ -117,6 +117,12 @@ bin/sparknet-control -config configs/control.example.yaml \
   -master-key .state/control.key -registry .state/registry.json -dispatch node-a
 bin/sparknet-agent -config configs/agent.example.yaml \
   -key .state/node.key -master-pub "$MASTER_PUB" -registry .state/registry.json
+
+# Change the registry of a RUNNING control plane over its admin surface. The
+# surface grants full registry authority, so it binds loopback-only and is
+# disabled unless admin.listen is set. See configs/control.example.yaml.
+bin/sparknetctl admin show   -addr http://127.0.0.1:8899
+bin/sparknetctl admin revoke -node node-a            # or -unrevoke to reinstate
 ```
 
 Each entry is signed **per entry** over the fabric's `signed_envelope_fields`

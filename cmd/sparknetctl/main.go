@@ -4,11 +4,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -48,6 +51,8 @@ func main() {
 		err = cmdOps()
 	case "registry":
 		err = cmdRegistry(os.Args[2:])
+	case "admin":
+		err = cmdAdmin(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -70,6 +75,8 @@ Usage:
   sparknetctl registry verify -registry FILE (-master-pub B64 | -master-key FILE)
   sparknetctl registry show   -registry FILE
   sparknetctl registry revoke -master-key FILE -registry FILE -node ID [-unrevoke] [-out FILE]
+  sparknetctl admin show  [-addr URL]
+  sparknetctl admin revoke -node ID [-unrevoke] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -269,6 +276,78 @@ func cmdRegistryRevoke(args []string) error {
 	view := authz.NewRegistry(reg)
 	fmt.Fprintf(os.Stderr, "%s node=%s latest_issued=%s digest=%s\n",
 		state, *node, view.LatestIssued().Format(time.RFC3339), digest)
+	return nil
+}
+
+// cmdAdmin talks to a running control plane's loopback admin surface, which
+// mutates the live registry the way `registry revoke` mutates one on disk.
+func cmdAdmin(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("admin: expected show|revoke")
+	}
+	switch args[0] {
+	case "show":
+		return cmdAdminShow(args[1:])
+	case "revoke":
+		return cmdAdminRevoke(args[1:])
+	default:
+		return fmt.Errorf("admin: unknown action %q (want show|revoke)", args[0])
+	}
+}
+
+func cmdAdminShow(args []string) error {
+	fs := flag.NewFlagSet("admin show", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	_ = fs.Parse(args)
+	return adminRequest(*addr, http.MethodGet, "/admin/registry", nil)
+}
+
+func cmdAdminRevoke(args []string) error {
+	fs := flag.NewFlagSet("admin revoke", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	node := fs.String("node", "", "node id")
+	unrevoke := fs.Bool("unrevoke", false, "reinstate instead of revoke")
+	_ = fs.Parse(args)
+	if *node == "" {
+		return fmt.Errorf("admin revoke: -node is required")
+	}
+	body, err := json.Marshal(map[string]any{"node_id": *node, "revoked": !*unrevoke})
+	if err != nil {
+		return err
+	}
+	return adminRequest(*addr, http.MethodPost, "/admin/registry/revoke", body)
+}
+
+// adminRequest performs one admin call and prints the JSON response, turning a
+// non-200 into an error that carries the server's message.
+func adminRequest(addr, method, path string, body []byte) error {
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, strings.TrimRight(addr, "/")+path, rdr)
+	if err != nil {
+		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("admin %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(data)))
+	}
+	var out any
+	if json.Unmarshal(data, &out) == nil {
+		pretty, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(pretty))
+		return nil
+	}
+	fmt.Println(string(data))
 	return nil
 }
 

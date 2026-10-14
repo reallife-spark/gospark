@@ -73,9 +73,13 @@ type App struct {
 	gw        *gateway.Gateway
 	transport *transport.Server
 
-	verifier     *authz.Verifier
-	masterPub    ed25519.PublicKey
+	verifier  *authz.Verifier
+	masterPub ed25519.PublicKey
+	// executorPubs maps node_id -> key whose results the control plane accepts.
+	// It is derived from the registry and refreshed on every distribute/revoke,
+	// so execMu guards it against the bus goroutine reading it concurrently.
 	executorPubs map[string]ed25519.PublicKey
+	execMu       sync.RWMutex
 
 	registry *Registry // node health reports (control plane)
 
@@ -86,6 +90,7 @@ type App struct {
 	regMu        sync.RWMutex
 
 	transportAddr string
+	adminAddr     string
 	addrMu        sync.Mutex
 	boundAddr     string
 	injectedBus   bus.Bus
@@ -117,6 +122,7 @@ func New(opts Options) (*App, error) {
 		executorPubs:  opts.ExecutorPublic,
 		registryDoc:   opts.Registry,
 		transportAddr: opts.Config.Transport.Listen,
+		adminAddr:     opts.Config.Admin.Listen,
 		injectedBus:   opts.Bus,
 		ownsBus:       opts.Bus == nil,
 	}
@@ -187,6 +193,26 @@ func (a *App) Run(ctx context.Context) error {
 			a.log.Error("gateway stopped", "err", err)
 		}
 	}()
+
+	// Admin surface (control plane only). It grants full registry authority, so
+	// it refuses to bind anything but loopback.
+	if a.role == RoleControl && a.adminAddr != "" {
+		if err := requireLoopback(a.adminAddr); err != nil {
+			return err
+		}
+		adminSrv := &http.Server{Addr: a.adminAddr, Handler: a.adminHandler()}
+		go func() {
+			a.log.Info("admin surface listening", "addr", a.adminAddr, "scope", "loopback-only")
+			if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				a.log.Error("admin surface stopped", "err", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = adminSrv.Shutdown(shutdownCtx)
+		}()
+	}
 
 	switch a.role {
 	case RoleControl:

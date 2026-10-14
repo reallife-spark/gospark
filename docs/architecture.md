@@ -106,6 +106,19 @@ authorizations from `-registry` (and re-signs each entry, clearing its
 `issued_at` to force a fresh stamp), while an agent loads the signed file and
 verifies every entry against its pinned master key.
 
+Changing a *running* control plane's registry goes through the **admin
+surface** (`internal/server/admin.go`), an HTTP endpoint disabled unless
+`admin.listen` is set. `GET /admin/registry` snapshots the served registry,
+`POST /admin/registry/revoke` flips one node's flag, and `PUT /admin/registry`
+replaces the whole authorization set. Every route funnels through
+`mutateRegistry`, the single write path that re-signs with a fresh stamp,
+re-derives the accepted executor keys and re-publishes — so an admin change is
+indistinguishable on the wire from a config-driven distribute. Because the
+process holds the Master key, the surface has full registry authority and
+refuses to bind any non-loopback address (`requireLoopback`); remote
+administration would need a signed-request path and is deliberately out of
+scope.
+
 ## Verification order (`internal/authz`)
 
 `VerifyTask` fails closed and distinguishes refusals so an operator can tell an

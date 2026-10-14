@@ -22,6 +22,7 @@ type Config struct {
 	Mesh      MeshConfig      `yaml:"mesh"`
 	Router    RouterConfig    `yaml:"router"`
 	Registry  RegistryConfig  `yaml:"registry"`
+	Admin     AdminConfig     `yaml:"admin"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -83,6 +84,14 @@ type LogConfig struct {
 // loads the signed file and verifies it against the pinned master key.
 type RegistryConfig struct {
 	File string `yaml:"file"`
+}
+
+// AdminConfig exposes the control plane's runtime registry control (revoke,
+// re-distribute). It grants full authority over the signed registry — the
+// process holds the Master key — so it must stay on the loopback interface.
+// Empty disables the surface entirely (the default).
+type AdminConfig struct {
+	Listen string `yaml:"listen"`
 }
 
 // Default returns the built-in defaults before any file or env override.
@@ -154,6 +163,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_REGISTRY_FILE"); v != "" {
 		cfg.Registry.File = v
+	}
+	if v := os.Getenv("GOSPARK_ADMIN_LISTEN"); v != "" {
+		cfg.Admin.Listen = v
 	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v

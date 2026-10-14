@@ -57,6 +57,13 @@ registry:
   # plane re-signs it with its own key. Empty => open mode (not fail-closed).
   file: ""
 
+admin:
+  # Live registry control for operators: `sparknetctl admin show|revoke`. The
+  # process holds the Master key, so this surface has full registry authority
+  # and the server refuses to bind anything but a loopback address. Empty
+  # (the default) disables it entirely.
+  listen: "127.0.0.1:8899"
+
 log:
   level: info
   format: json

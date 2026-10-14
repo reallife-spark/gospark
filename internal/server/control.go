@@ -95,15 +95,8 @@ func (a *App) setupRegistry(ctx context.Context) error {
 	}
 
 	// Merge registry-derived keys over any explicitly supplied executor keys.
-	pubs, err := reg.ExecutorPublicKeys(time.Now())
-	if err != nil {
+	if err := a.refreshExecutorKeys(); err != nil {
 		return err
-	}
-	if a.executorPubs == nil {
-		a.executorPubs = map[string]ed25519.PublicKey{}
-	}
-	for id, pub := range pubs {
-		a.executorPubs[id] = pub
 	}
 
 	if err := a.publishRegistry(ctx); err != nil {
@@ -136,33 +129,82 @@ func (a *App) publishRegistry(ctx context.Context) error {
 // registry — the distribute-registry operation. Re-signing with a fresh
 // issued_at is what lets peers accept the change and refuse an older rollback.
 func (a *App) ReSignRegistry(ctx context.Context, authorizations []apiv1.NodeAuthorization) (string, error) {
-	a.regMu.Lock()
-	if a.registryDoc == nil {
-		a.regMu.Unlock()
-		return "", fmt.Errorf("server: no registry configured to re-sign")
+	digest, err := a.mutateRegistry(ctx, func(doc *apiv1.NodeRegistry) error {
+		doc.Authorizations = authorizations
+		// Clear any carried issue time so SignRegistry stamps a fresh one: a
+		// distribute-registry change must advance the rollback guard.
+		for i := range doc.Authorizations {
+			doc.Authorizations[i].IssuedAt = ""
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
 	}
-	a.registryDoc.Authorizations = authorizations
-	// Clear any carried issue time so SignRegistry stamps a fresh one: a
-	// distribute-registry change must advance the rollback guard.
-	for i := range a.registryDoc.Authorizations {
-		a.registryDoc.Authorizations[i].IssuedAt = ""
+	a.log.Info("registry re-signed", "nodes", len(authorizations), "digest", short(digest))
+	return digest, nil
+}
+
+// mutateRegistry is the single write path for the served registry: it applies
+// mutate under the write lock, re-signs every entry with a fresh stamp,
+// installs the new view, refreshes the executor keys and re-publishes. Both a
+// config-driven distribute and the admin surface funnel through here, so they
+// cannot drift apart.
+func (a *App) mutateRegistry(ctx context.Context, mutate func(*apiv1.NodeRegistry) error) (string, error) {
+	if a.registryDoc == nil {
+		return "", fmt.Errorf("server: no registry configured")
+	}
+	a.regMu.Lock()
+	if err := mutate(a.registryDoc); err != nil {
+		a.regMu.Unlock()
+		return "", err
 	}
 	if err := authz.SignRegistry(a.id, a.registryDoc); err != nil {
 		a.regMu.Unlock()
 		return "", err
 	}
+	a.nodeRegistry = authz.NewRegistry(a.registryDoc)
 	doc := a.registryDoc
-	a.nodeRegistry = authz.NewRegistry(doc)
 	digest, err := authz.RegistryDigest(doc)
 	a.regMu.Unlock()
 	if err != nil {
 		return "", err
 	}
+	if err := a.refreshExecutorKeys(); err != nil {
+		return "", err
+	}
 	if err := a.publishRegistry(ctx); err != nil {
 		return "", err
 	}
-	a.log.Info("registry re-signed", "nodes", len(authorizations), "digest", short(digest))
 	return digest, nil
+}
+
+// refreshExecutorKeys re-derives the accepted executor keys from the current
+// registry view and merges them over any explicitly supplied ones, so a newly
+// authorized node's results start verifying without a restart. It only adds or
+// updates: a key already present is not removed, but a revoked node's results
+// are still refused by authorizeNode (its signature is checked first, then the
+// registry), so a lingering key cannot be exploited.
+func (a *App) refreshExecutorKeys() error {
+	a.regMu.RLock()
+	reg := a.nodeRegistry
+	a.regMu.RUnlock()
+	if reg == nil {
+		return nil
+	}
+	pubs, err := reg.ExecutorPublicKeys(time.Now())
+	if err != nil {
+		return err
+	}
+	a.execMu.Lock()
+	defer a.execMu.Unlock()
+	if a.executorPubs == nil {
+		a.executorPubs = map[string]ed25519.PublicKey{}
+	}
+	for id, pub := range pubs {
+		a.executorPubs[id] = pub
+	}
+	return nil
 }
 
 // RegistryDigest returns the digest of the currently served registry, or "" in
@@ -221,7 +263,9 @@ func (a *App) onResult(_ context.Context, _ string, data []byte) error {
 	if err := json.Unmarshal(data, &env); err != nil {
 		return fmt.Errorf("server: result payload: %w", err)
 	}
+	a.execMu.RLock()
 	pub, ok := a.executorPubs[env.NodeID]
+	a.execMu.RUnlock()
 	if !ok {
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("result from unknown executor", "node", env.NodeID)
