@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -79,6 +80,7 @@ Usage:
   sparknetctl admin revoke -node ID [-unrevoke] [-addr URL]
   sparknetctl admin authorize -node ID -pubkey B64 -caps a,b [-role peer] [-overlay IP] [-ttl 8760h] [-addr URL]
   sparknetctl admin gpu    [-addr URL]
+  sparknetctl admin place  [-caps cluster-serve] [-min-free-mem BYTES] [-max-temp C] [-require-healthy] [-max-age DUR] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -285,7 +287,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize|gpu")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|place")
 	}
 	switch args[0] {
 	case "show":
@@ -296,9 +298,39 @@ func cmdAdmin(args []string) error {
 		return cmdAdminAuthorize(args[1:])
 	case "gpu":
 		return cmdAdminGPU(args[1:])
+	case "place":
+		return cmdAdminPlace(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|place)", args[0])
 	}
+}
+
+// cmdAdminPlace asks a running control plane to rank dispatch candidates and
+// report which node it would choose, without dispatching.
+func cmdAdminPlace(args []string) error {
+	fs := flag.NewFlagSet("admin place", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	caps := fs.String("caps", "cluster-serve", "capability to require")
+	minFree := fs.Uint64("min-free-mem", 0, "require at least this many free accelerator bytes")
+	maxTemp := fs.Uint("max-temp", 0, "require every reported GPU at or below this temperature (C)")
+	healthy := fs.Bool("require-healthy", false, "require a Healthy verdict on every reported GPU")
+	maxAge := fs.Duration("max-age", 0, "treat telemetry older than this as stale (0 = any age)")
+	_ = fs.Parse(args)
+	q := url.Values{}
+	q.Set("caps", *caps)
+	if *minFree > 0 {
+		q.Set("min_free_mem", strconv.FormatUint(*minFree, 10))
+	}
+	if *maxTemp > 0 {
+		q.Set("max_temp", strconv.FormatUint(uint64(*maxTemp), 10))
+	}
+	if *healthy {
+		q.Set("require_healthy", "1")
+	}
+	if *maxAge > 0 {
+		q.Set("max_age", maxAge.String())
+	}
+	return adminRequest(*addr, http.MethodGet, "/admin/placement?"+q.Encode(), nil)
 }
 
 func cmdAdminGPU(args []string) error {

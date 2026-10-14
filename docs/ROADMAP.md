@@ -36,7 +36,7 @@ routes, records or transports is *control/service plane*.
 | §3.1 `sparknet-net-setup.sh` — RoCEv2, MTU 9000, PFC/ECN, kernel tuning | out of scope (host/ops) | — (see `internal/mesh` for overlay inspection only) |
 | §3.2 `docker-compose.yml` — departmental vLLM serving | compute plane | **seam**: `internal/gateway` fronts a vLLM upstream via `/v1/chat/completions` |
 | §3.3 `sparknet_bridge.py` — departmental dispatch/orchestration bridge | goSpark | `cmd/sparknet-agent` + `internal/server` (verify → execute → attest) |
-| §3.4 `master_orchestrator.py` — Master Core orchestration/aggregation | goSpark | `cmd/sparknet-control` + `DispatchTask`; aggregation is a **seam** |
+| §3.4 `master_orchestrator.py` — Master Core orchestration/aggregation | goSpark | `cmd/sparknet-control` + `DispatchTask`; aggregation is a **seam**; node selection is capacity-aware via `internal/placement` (`-dispatch auto`) |
 | §3.5 `sparknet_knowledge_sync.py` — knowledge indexer/vector retrieval | goSpark seam | `internal/ingest` (crawl + chunk); embedding/index is **compute plane** |
 | §3.6 `cluster_health_monitor.py` — health + compliance audit daemon | goSpark | `internal/gputel` + `cmd/sparknet-gpu` (NVML/DCGM) + `internal/server` `Registry`; `nvidia-smi` replaced by direct library reads |
 | §3.7 `sparknet-cli` — operator CLI | goSpark | `cmd/sparknetctl` |
@@ -52,7 +52,7 @@ routes, records or transports is *control/service plane*.
 
 | Concept | Owner | In goSpark |
 |---|---|---|
-| Departmental GPU delegation & optimization (the `x_ij` assignment) | compute plane | **seam**: router decides *where*, not *how much VRAM*; no VRAM-aware scheduling yet (ADR 0004) |
+| Departmental GPU delegation & optimization (the `x_ij` assignment) | compute plane (node choice: goSpark) | **goSpark**: `internal/placement` picks the node by free-VRAM / temp / health; the per-node *sharding* (the `x_ij` optimization) stays compute plane |
 | Master→Department aggregation over secure gRPC | goSpark | bus (NATS/JetStream) carries signed tasks/results; gRPC is the blueprint's transport, the fabric chose a store-and-forward bus |
 | Disaggregated prefill/decode across the fleet | compute plane | — |
 | Global distributed KV-cache fabric via RDMA/RoCE | compute plane | **seam**: `internal/transport` moves NVFP4 blocks over QUIC; RDMA/RoCE is host-layer |
@@ -72,15 +72,22 @@ routes, records or transports is *control/service plane*.
 - **GPU telemetry** — NVML metrics + DCGM health via a pure-Go core and a single
   cgo sidecar, surfaced read-only on `GET /admin/gpu`
   (`internal/gputel`, `cmd/sparknet-gpu`; ADR 0004).
+- **Telemetry-aware dispatch** — a pure placement engine ranks the authorized
+  nodes by free accelerator memory, temperature, utilization and health, with
+  expressible resource floors and per-node reasons; `-dispatch auto` and
+  `GET /admin/placement` / `sparknetctl admin place` surface it
+  (`internal/placement`; ADR 0005).
 - **Operator CLI** — `cmd/sparknetctl` (identity, registry, admin, routing,
-  blocks, `admin gpu`).
+  blocks, `admin gpu`, `admin place`).
 
 ## Deliberate seams (interface exists, body is elsewhere)
 
 1. **Compute plane** — no model, tensors, tokenizer or CUDA is linked in; the
    gateway is the only door (`TODO(compute plane)`).
-2. **VRAM-aware scheduling** — the router decides on token counts, not free
-   VRAM. GPU telemetry is recorded but not yet fed into routing.
+2. **VRAM-aware scheduling** — node *selection* is capacity-aware
+   (`internal/placement`: dispatch avoids a node that cannot hold the work and
+   prefers more free VRAM); the token-count router's own edge/DGX/cluster
+   escalation is unchanged, and per-node sharding is compute-plane.
 3. **RadixAttention / KV routing** — the codec and transport are real; the
    prefix tree and prefetch policy are compute-plane.
 4. **Knowledge index** — crawl and chunk exist; embeddings and the vector store

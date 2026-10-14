@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/authz"
+	"github.com/reallife-spark/goSpark/internal/placement"
 )
 
 // requireLoopback rejects any admin listen address that is not on the loopback
@@ -44,7 +46,70 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/registry/revoke", a.handleAdminRevoke)
 	mux.HandleFunc("/admin/registry/authorize", a.handleAdminAuthorize)
 	mux.HandleFunc("/admin/gpu", a.handleAdminGPU)
+	mux.HandleFunc("/admin/placement", a.handleAdminPlacement)
 	return mux
+}
+
+// handleAdminPlacement serves GET /admin/placement: it ranks the nodes the
+// control plane may dispatch to and reports the chosen one, without dispatching.
+// It is read-only and makes the dispatch policy inspectable. Query parameters:
+//
+//	caps=cluster-serve       capability to require (default cluster-serve)
+//	min_free_mem=<bytes>     require at least this much free accelerator memory
+//	max_temp=<C>             require every reported GPU at or below this ceiling
+//	require_healthy=1        require a Healthy verdict on every reported GPU
+//	max_age=<Go duration>    treat telemetry older than this as stale
+func (a *App) handleAdminPlacement(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	capability := authz.Capability(q.Get("caps"))
+	if capability == "" {
+		capability = authz.CapClusterServe
+	}
+	if !authz.IsKnown(capability) {
+		writeAdminError(w, http.StatusBadRequest, fmt.Errorf("unknown capability %q", capability))
+		return
+	}
+	req := placement.Request{
+		Requirement: placement.Requirement{RequireHealthy: truthy(q.Get("require_healthy"))},
+	}
+	if v := q.Get("min_free_mem"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			writeAdminError(w, http.StatusBadRequest, fmt.Errorf("min_free_mem: %w", err))
+			return
+		}
+		req.MinFreeMemBytes = n
+	}
+	if v := q.Get("max_temp"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			writeAdminError(w, http.StatusBadRequest, fmt.Errorf("max_temp: %w", err))
+			return
+		}
+		req.MaxTempC = uint32(n)
+	}
+	if v := q.Get("max_age"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			writeAdminError(w, http.StatusBadRequest, fmt.Errorf("max_age: %w", err))
+			return
+		}
+		req.MaxTelemetryAge = d
+	}
+	writeAdminJSON(w, http.StatusOK, a.Place(req, capability))
+}
+
+// truthy accepts the usual on-flags for a query bool.
+func truthy(v string) bool {
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // handleAdminGPU serves GET /admin/gpu: the last GPU telemetry per node, as

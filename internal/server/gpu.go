@@ -54,6 +54,18 @@ func (a *App) onGPUHealth(_ context.Context, _ string, data []byte) error {
 	return nil
 }
 
+// gpuTelemetry returns a copy of the last telemetry recorded for a node.
+func (a *App) gpuTelemetry(nodeID string) (*apiv1.GpuTelemetry, bool) {
+	a.gpuMu.RLock()
+	defer a.gpuMu.RUnlock()
+	t, ok := a.gpu[nodeID]
+	if !ok {
+		return nil, false
+	}
+	cp := t
+	return &cp, true
+}
+
 // GPUSnapshot returns the last GPU telemetry per node, sorted by node id.
 func (a *App) GPUSnapshot() gpuSnapshot {
 	a.gpuMu.RLock()

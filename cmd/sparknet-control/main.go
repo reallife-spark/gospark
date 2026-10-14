@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/reallife-spark/goSpark/internal/apiv1"
+	"github.com/reallife-spark/goSpark/internal/authz"
 	"github.com/reallife-spark/goSpark/internal/config"
 	"github.com/reallife-spark/goSpark/internal/identity"
+	"github.com/reallife-spark/goSpark/internal/placement"
 	"github.com/reallife-spark/goSpark/internal/registryfile"
 	"github.com/reallife-spark/goSpark/internal/server"
 )
@@ -37,10 +39,11 @@ func run() error {
 	executors := fs.String("executors", "", "comma list node_id=public_key_b64 of trusted executors")
 	registryFile := fs.String("registry", "", "node authorizations file to sign and serve (overrides config registry.file)")
 	transportListen := fs.String("transport-listen", "", "override transport listen address")
-	dispatch := fs.String("dispatch", "", "dispatch a task to this node id, then keep serving")
+	dispatch := fs.String("dispatch", "", "dispatch a task to this node id, or \"auto\" to select one by GPU telemetry, then keep serving")
 	op := fs.String("op", "arith", "operation for -dispatch")
 	params := fs.String("params", `{"expression":"2+2"}`, "params JSON for -dispatch")
 	ttl := fs.Duration("ttl", 60*time.Second, "task time-to-live for -dispatch")
+	dispatchTimeout := fs.Duration("dispatch-timeout", 30*time.Second, "how long -dispatch auto waits for an eligible node")
 	_ = fs.Parse(os.Args[1:])
 
 	cfg, err := config.Load(*cfgPath)
@@ -87,12 +90,42 @@ func run() error {
 
 	if *dispatch != "" {
 		go func() {
-			// Give the bus a moment to connect before the first publish.
-			time.Sleep(500 * time.Millisecond)
+			// Wait for the control plane to finish wiring, then give nodes a
+			// moment to report in before dispatching.
+			select {
+			case <-app.Ready():
+			case <-ctx.Done():
+				return
+			}
 			env, err := signTask(id, *op, *params, *ttl)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "sparknet-control: build task:", err)
 				return
+			}
+			if *dispatch == "auto" {
+				// A node may not have reported in yet; poll placement until one
+				// is eligible or the timeout elapses.
+				deadline := time.Now().Add(*dispatchTimeout)
+				for {
+					dec := app.Place(placement.Request{}, authz.CapClusterServe)
+					if dec.NodeID != "" {
+						if err := app.DispatchTask(context.Background(), dec.NodeID, env); err != nil {
+							fmt.Fprintln(os.Stderr, "sparknet-control: auto-dispatch:", err)
+							return
+						}
+						fmt.Fprintf(os.Stderr, "sparknet-control: auto-dispatch chose %s (%s)\n", dec.NodeID, dec.Reason)
+						return
+					}
+					if time.Now().After(deadline) {
+						fmt.Fprintln(os.Stderr, "sparknet-control: auto-dispatch: no eligible node within", *dispatchTimeout)
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(200 * time.Millisecond):
+					}
+				}
 			}
 			if err := app.DispatchTask(context.Background(), *dispatch, env); err != nil {
 				fmt.Fprintln(os.Stderr, "sparknet-control: dispatch:", err)

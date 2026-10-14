@@ -18,11 +18,12 @@ while a GPU job is in flight.
 |---|---|
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |
 | `cmd/sparknet-agent` | a node: reports health, verifies signed tasks, executes a closed operation whitelist, returns attested results |
-| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify/revoke, live admin show/revoke, block decode/send |
+| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify/revoke, live admin show/revoke/authorize/gpu/place, block decode/send |
 | `cmd/sparknet-gpu` | GPU-telemetry sidecar: the one cgo binary, links NVML (go-nvlib) + DCGM (go-dcgm), publishes a node's GPU snapshot on the health subject |
 | `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary + the signed node registry |
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
 | `internal/gputel` | pure-Go GPU telemetry: `Collector`/`Snapshot` types, registry, `Null`, `Multi`, and the wire projection (no GPU link) |
+| `internal/placement` | pure telemetry-aware dispatch: rank authorized nodes by free VRAM / temperature / health and choose one (no bus, no registry, no GPU) |
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
 | `internal/transport` | the HTTP/3 (QUIC) data plane for KV blocks |
 | `internal/router` | edge / DGX / cluster escalation decisions |
@@ -165,6 +166,36 @@ The core binaries are pure Go and compile with `CGO_ENABLED=0`; only
 libraries are consumed by path (`require` + local `replace`); see
 [`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md).
 
+## Telemetry-aware dispatch
+
+Dispatch chooses a node by its **last-known capacity**, not by name. The
+placement engine ranks the nodes the registry authorizes for the capability —
+preferring a fresh GPU reading, then more free accelerator memory, lower
+temperature, lower utilization and lower load — and the control plane dispatches
+to the winner. Capture happens in `internal/placement`, a pure function with no
+bus, registry or GPU, so the policy is unit-tested directly.
+
+```sh
+# Dispatch to the best node with at least 32 GiB free, then keep serving.
+bin/sparknet-control -config configs/control.example.yaml \
+  -master-key .state/control.key -registry .state/registry.json \
+  -dispatch auto -dispatch-timeout 30s -op arith -params '{"expression":"6*7"}'
+
+# Ask a RUNNING control plane which node it would pick, without dispatching
+# (read-only; the reason and full ranking come back too).
+bin/sparknetctl admin place -addr http://127.0.0.1:8899
+bin/sparknetctl admin place -addr http://127.0.0.1:8899 -min-free-mem 34359738368 -max-temp 80 -require-healthy
+```
+
+A **zero requirement** makes every serving node eligible and the ranking
+advisory; a **non-zero requirement** (a memory floor, a temperature ceiling, or
+`-require-healthy`) needs an *available, fresh* reading and reports why a node
+was excluded (`accelerator unavailable`, `no telemetry for requirement`,
+`telemetry stale`, `insufficient free accelerator memory`, …). Telemetry is
+still never authority: placement only ever chooses *among* the nodes the
+registry authorizes, so a node cannot lie its way into work. See
+[`docs/adr/0005-telemetry-aware-dispatch.md`](docs/adr/0005-telemetry-aware-dispatch.md).
+
 ## Contract provenance
 
 `spec/sparknet/` holds read-only snapshots of `sparknet/contracts/`. The fabric
@@ -177,8 +208,11 @@ When a snapshot moves, the mirrored Go in `internal/authz` and
 
 First-pass scaffold + control-plane core. The control/data-plane split, the
 signed-envelope verification, the NVFP4 codec, the QUIC transport, the live
-admin surface and GPU telemetry (via the cgo sidecar) are real and tested. Model
-inference is deliberately **not** here — that is the compute plane. See
-[`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md) and
+admin surface, GPU telemetry (via the cgo sidecar) and telemetry-aware dispatch
+are real and tested. Model inference is deliberately **not** here — that is the
+compute plane. See
+[`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md),
 [`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md)
+and
+[`docs/adr/0005-telemetry-aware-dispatch.md`](docs/adr/0005-telemetry-aware-dispatch.md)
 for the decisions and their consequences.

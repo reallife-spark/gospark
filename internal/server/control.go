@@ -68,8 +68,14 @@ func (a *App) runControl(ctx context.Context) error {
 		return err
 	}
 	a.log.Info("control plane ready", "node", a.id.NodeID, "root", a.cfg.Bus.SubjectRoot)
+	close(a.ready)
 	return nil
 }
+
+// Ready is closed once the control plane has finished wiring: its health
+// registry is installed and its bus subscriptions are armed. Callers wait on it
+// before reading placement inputs that bus goroutines populate.
+func (a *App) Ready() <-chan struct{} { return a.ready }
 
 // setupRegistry signs and publishes the authoritative node registry, then
 // derives the executor public keys from it. A control plane with no registry

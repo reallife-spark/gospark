@@ -83,6 +83,12 @@ type App struct {
 
 	registry *Registry // node health reports (control plane)
 
+	// ready is closed once the control plane has installed its health registry
+	// and armed its subscriptions. Callers that need to read placement inputs
+	// (which are populated by bus goroutines) wait on it to establish a happens-
+	// before and avoid racing runControl's setup.
+	ready chan struct{}
+
 	// gpu holds the last GPU telemetry per node, reported by the sparknet-gpu
 	// sidecar on the health subject. It is separate from `registry` so a
 	// telemetry-only report cannot clobber an agent's full health record.
@@ -131,6 +137,7 @@ func New(opts Options) (*App, error) {
 		adminAddr:     opts.Config.Admin.Listen,
 		injectedBus:   opts.Bus,
 		ownsBus:       opts.Bus == nil,
+		ready:         make(chan struct{}),
 	}
 	if opts.TransportListen != "" {
 		a.transportAddr = opts.TransportListen

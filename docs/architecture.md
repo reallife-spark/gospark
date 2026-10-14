@@ -120,7 +120,9 @@ process holds the Master key, the surface has full registry authority and
 refuses to bind any non-loopback address (`requireLoopback`); remote
 administration would need a signed-request path and is deliberately out of
 scope. A separate read-only route, `GET /admin/gpu`, serves the last GPU
-telemetry per node (see below); it has no write counterpart.
+telemetry per node (see below), and `GET /admin/placement` ranks dispatch
+candidates and reports the choice (see placement, below); neither has a write
+counterpart.
 
 ## Verification order (`internal/authz`)
 
@@ -187,6 +189,35 @@ A missing driver or a `CGO_ENABLED=0` build is a normal, reported condition: the
 sidecar builds on a driverless host and answers `available=false` with a reason
 (`nvml: … ERROR_LIBRARY_NOT_FOUND`, `dcgm: … libdcgm.so.4 not found`) rather
 than crashing.
+
+## Placement (`internal/placement`)
+
+Dispatch chooses a node by its last-known capacity. `Select(candidates,
+request) Decision` is **pure**: plain `Candidate` values (node id, serving,
+load, last telemetry) in, a `Decision` out — the chosen node, a reason, and the
+best-first ranking with a per-node reason. It has no bus, registry or GPU, so
+the policy is unit-tested directly. `internal/server` builds the candidate set
+from the registry — in fail-closed mode only nodes authorized for the
+capability (`App.candidates` / `authorizeNode`), in open mode every registered
+node — and joins it with the health registry's `Serving`/`LoadPermille` and the
+telemetry map (preferring the GPU sidecar's reading over the agent's embedded
+one). Authorization is applied *before* placement, so the engine only picks
+*among* authorized nodes; telemetry can never add one (ADR 0005).
+
+Eligibility and ranking are separate. A zero `Requirement` makes every serving
+node eligible and the ordering advisory; a non-zero requirement (a free-memory
+floor, a temperature ceiling, or require-healthy) demands an **available, fresh**
+reading and reports why a node was excluded (`accelerator unavailable`,
+`no telemetry for requirement`, `telemetry stale`,
+`insufficient free accelerator memory`, `temperature above ceiling`,
+`accelerator not healthy`). `available` (the sidecar saw a GPU) and `fresh`
+(recent, from an available accelerator, within `MaxTelemetryAge`) are distinct
+axes, so a driverless node is not mislabelled "stale". Ranking prefers fresh over
+stale/none, then more free memory, lower temperature, lower utilization, lower
+load, and finally node id — deterministic. `App.Place` and `App.PlaceAndDispatch`
+expose it; `GET /admin/placement` reports it read-only, and
+`sparknet-control -dispatch auto` polls it (after `App.Ready()`) until a node is
+eligible, then dispatches.
 
 ## What is intentionally absent
 
