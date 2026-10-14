@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 )
 
@@ -236,5 +238,31 @@ func OperationNames() []string {
 	for k := range knownOperations {
 		out = append(out, k)
 	}
+	return out
+}
+
+// dispatchOperation routes an operation to its executor. The closed sandbox is
+// tried first, so a local operation can never be shadowed by delegation; an
+// operation the node's compute-plane worker was explicitly configured to run is
+// delegated; anything else is refused. This keeps the sandbox the default and
+// delegation an explicit, operator-named exception.
+func (a *App) dispatchOperation(ctx context.Context, operation, paramsJSON string) (string, error) {
+	if _, ok := knownOperations[operation]; ok {
+		return Execute(operation, paramsJSON)
+	}
+	if a.compute != nil && a.compute.Handles(operation) {
+		return a.compute.Execute(ctx, operation, paramsJSON)
+	}
+	return "", fmt.Errorf("%w: %q", ErrUnknownOperation, operation)
+}
+
+// operationNames lists every operation this node can run: the local sandbox
+// plus any delegated to the compute-plane worker, sorted.
+func (a *App) operationNames() []string {
+	out := OperationNames()
+	if a.compute != nil {
+		out = append(out, a.compute.Operations()...)
+	}
+	sort.Strings(out)
 	return out
 }

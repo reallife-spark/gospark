@@ -161,7 +161,28 @@ tokenizer: the control plane must not depend on the compute plane's internals.
 Agents execute `arith` (a restricted expression evaluator: `+ - * / // % **`,
 parens, literals — no names, calls or attributes) and `digest` (sha256). Nothing
 else. There is no operation that runs a script, because that would turn every
-agent into a general remote-code endpoint.
+agent into a general remote-code endpoint. The sandbox is the **default**: an
+operation either runs here, in-process, or (if the operator explicitly delegated
+it) is handed to the compute-plane worker — but a local name can never be
+shadowed, and an undeclared name is still refused.
+
+## Compute-plane bridge (`internal/compute`)
+
+The Go plane performs no GPU work, but a node may still need to run it. The
+bridge is the seam: `App.dispatchOperation` tries the closed sandbox first, then
+delegates any operation named in `config.compute.operations` to an `HTTPExecutor`
+that POSTs `{node_id, operation, params_json}` to the worker's `/v1/execute` and
+reads back `{result}`, authenticating with the blueprint's shared secret in
+`X-Sparknet-Auth`. `internal/compute` links no model, tensor or CUDA; it only
+moves bytes to the process that has them.
+
+The lane does not change the authority model: the task is still Master-signed
+and capability-gated (`cluster-serve`), the node must still be registry-
+authorized, and the agent still signs the attested result. The trust boundary is
+the operator-configured worker — the designated compute-plane trust domain. The
+reference worker is `compute/compute_worker.py`. `config.Validate` refuses a
+delegated name that shadows `arith`/`digest`, a duplicate, an `endpoint` with no
+`operations` and vice versa (ADR 0006).
 
 ## Configuration
 
@@ -225,6 +246,7 @@ eligible, then dispatches.
 
 ## What is intentionally absent
 
-No model, no tensors, no tokenizer, no CUDA. The compute plane is invoked
-through the gateway (`/v1/chat/completions`) and never linked in. `TODO(compute
-plane)` marks the seam.
+No model, no tensors, no tokenizer, no CUDA. The compute plane is reached two
+ways — the gateway proxies inference requests (`/v1/chat/completions`) and agents
+delegate named operations over the compute seam — and in neither case is the
+runtime linked in.

@@ -1,0 +1,23 @@
+[Unit]
+Description=Sparknet compute-plane worker (goSpark bridge)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+# Run beside the GPU as a service account that can reach vLLM and the GPU.
+User=sparknet
+WorkingDirectory=/opt/sparknet/compute
+EnvironmentFile=-/opt/sparknet/compute/compute-worker.env
+ExecStart=/opt/sparknet/compute/.venv/bin/uvicorn compute_worker:app \
+  --host ${COMPUTE_LISTEN_HOST} --port ${COMPUTE_LISTEN_PORT} --workers ${COMPUTE_WORKERS}
+Restart=always
+RestartSec=5
+# Hardening: the worker needs no privileges.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

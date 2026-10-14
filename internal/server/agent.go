@@ -28,7 +28,13 @@ func (a *App) runAgent(ctx context.Context) error {
 	if _, err := a.bus.Subscribe(ctx, a.subj(bus.KindRegistry), a.onRegistry); err != nil {
 		return fmt.Errorf("server: subscribe registry: %w", err)
 	}
-	a.log.Info("agent ready", "node", a.id.NodeID, "subject", subject, "ops", OperationNames())
+	a.log.Info("agent ready", "node", a.id.NodeID, "subject", subject, "ops", a.operationNames())
+	if a.compute != nil {
+		a.log.Info("compute-plane seam enabled", "executor", a.compute.Name(), "operations", a.compute.Operations())
+		if err := a.compute.Health(ctx); err != nil {
+			a.log.Warn("compute-plane worker not reachable at startup", "executor", a.compute.Name(), "err", err)
+		}
+	}
 
 	// Heartbeat health immediately and then on a slow cadence.
 	if err := a.PublishHealth(ctx, true); err != nil {
@@ -113,7 +119,7 @@ func (a *App) registryAllowsSelf() bool {
 // onTask verifies and executes a signed task, then publishes the attested
 // result. Every refusal path returns an error to the bus (a NAK), so a poison
 // message is retried or dead-lettered rather than silently dropped.
-func (a *App) onTask(_ context.Context, _ string, data []byte) error {
+func (a *App) onTask(ctx context.Context, _ string, data []byte) error {
 	var env apiv1.TaskEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
 		a.counters.TasksRefused.Add(1)
@@ -139,7 +145,7 @@ func (a *App) onTask(_ context.Context, _ string, data []byte) error {
 		return fmt.Errorf("server: node %s not authorized by registry", a.id.NodeID)
 	}
 
-	result, err := Execute(env.Operation, env.ParamsJSON)
+	result, err := a.dispatchOperation(ctx, env.Operation, env.ParamsJSON)
 	if err != nil {
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("task execution failed", "task", env.TaskID, "op", env.Operation, "err", err)

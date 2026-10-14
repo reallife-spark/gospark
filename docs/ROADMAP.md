@@ -35,7 +35,7 @@ routes, records or transports is *control/service plane*.
 |---|---|---|
 | §3.1 `sparknet-net-setup.sh` — RoCEv2, MTU 9000, PFC/ECN, kernel tuning | out of scope (host/ops) | — (see `internal/mesh` for overlay inspection only) |
 | §3.2 `docker-compose.yml` — departmental vLLM serving | compute plane | **seam**: `internal/gateway` fronts a vLLM upstream via `/v1/chat/completions` |
-| §3.3 `sparknet_bridge.py` — departmental dispatch/orchestration bridge | goSpark | `cmd/sparknet-agent` + `internal/server` (verify → execute → attest) |
+| §3.3 `sparknet_bridge.py` — departmental dispatch/orchestration bridge | goSpark | `cmd/sparknet-agent` + `internal/server` (verify → execute → attest); the GPU execution half is now wired through the compute seam (`internal/compute` → `compute/compute_worker.py`), so a signed `infer`/`embed` task reaches vLLM and returns an attested result |
 | §3.4 `master_orchestrator.py` — Master Core orchestration/aggregation | goSpark | `cmd/sparknet-control` + `DispatchTask`; aggregation is a **seam**; node selection is capacity-aware via `internal/placement` (`-dispatch auto`) |
 | §3.5 `sparknet_knowledge_sync.py` — knowledge indexer/vector retrieval | goSpark seam | `internal/ingest` (crawl + chunk); embedding/index is **compute plane** |
 | §3.6 `cluster_health_monitor.py` — health + compliance audit daemon | goSpark | `internal/gputel` + `cmd/sparknet-gpu` (NVML/DCGM) + `internal/server` `Registry`; `nvidia-smi` replaced by direct library reads |
@@ -77,13 +77,19 @@ routes, records or transports is *control/service plane*.
   expressible resource floors and per-node reasons; `-dispatch auto` and
   `GET /admin/placement` / `sparknetctl admin place` surface it
   (`internal/placement`; ADR 0005).
+- **Compute-plane bridge** — a node may delegate explicitly-named operations to
+  a Python/CUDA worker and attest the worker's result; the closed sandbox stays
+  the default and local operations can never be shadowed. Ships with the
+  reference worker `compute/compute_worker.py` (`internal/compute`; ADR 0006).
 - **Operator CLI** — `cmd/sparknetctl` (identity, registry, admin, routing,
-  blocks, `admin gpu`, `admin place`).
+  blocks, `admin gpu`, `admin place`, `admin health`).
 
 ## Deliberate seams (interface exists, body is elsewhere)
 
-1. **Compute plane** — no model, tensors, tokenizer or CUDA is linked in; the
-   gateway is the only door (`TODO(compute plane)`).
+1. **Compute plane** — no model, tensors, tokenizer or CUDA is linked in. It is
+   reached two ways: the gateway proxies inference requests, and agents delegate
+   named GPU operations over the compute seam to `compute/compute_worker.py`.
+   The gateways and the seam are the only doors; the runtime is never linked.
 2. **VRAM-aware scheduling** — node *selection* is capacity-aware
    (`internal/placement`: dispatch avoids a node that cannot hold the work and
    prefers more free VRAM); the token-count router's own edge/DGX/cluster

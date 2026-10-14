@@ -53,6 +53,18 @@ router:
   cluster_token_floor: 32768
   max_nodes: 4
 
+# Compute-plane seam (optional). Point this node at a Python/CUDA worker and
+# name the operations it may run; the Go plane still verifies the signed task
+# and signs the result, only execution is delegated. Leave endpoint empty to
+# keep the closed sandbox (arith, digest) and delegate nothing.
+compute:
+  endpoint: ""
+  # secret: send as X-Sparknet-Auth to the worker
+  secret: ""
+  # operations delegated to the worker; must not shadow arith/digest
+  operations: []
+  timeout: 60s
+
 registry:
   # Master-signed registry this node adopts at startup and verifies against its
   # pinned -master-pub. Empty => adopt from the bus, or run permissive if none.

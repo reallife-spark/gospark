@@ -10,6 +10,11 @@
 *.out
 coverage.txt
 
+# Compute-plane worker: local venv and secrets (the .example env is committed).
+/compute/.venv/
+/compute/compute-worker.env
+__pycache__/
+
 # Editor
 .idea/
 .vscode/

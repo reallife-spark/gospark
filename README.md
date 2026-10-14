@@ -24,6 +24,8 @@ while a GPU job is in flight.
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
 | `internal/gputel` | pure-Go GPU telemetry: `Collector`/`Snapshot` types, registry, `Null`, `Multi`, and the wire projection (no GPU link) |
 | `internal/placement` | pure telemetry-aware dispatch: rank authorized nodes by free VRAM / temperature / health and choose one (no bus, no registry, no GPU) |
+| `internal/compute` | the compute-plane seam: delegate explicitly-named operations to a Python/CUDA worker over HTTP (no model, no CUDA) |
+| `compute/` | the reference Python/CUDA worker (`sparknet_bridge.py`, generalised): FastAPI `/v1/execute`, systemd unit, example env |
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
 | `internal/transport` | the HTTP/3 (QUIC) data plane for KV blocks |
 | `internal/router` | edge / DGX / cluster escalation decisions |
@@ -198,6 +200,41 @@ still never authority: placement only ever chooses *among* the nodes the
 registry authorizes, so a node cannot lie its way into work. See
 [`docs/adr/0005-telemetry-aware-dispatch.md`](docs/adr/0005-telemetry-aware-dispatch.md).
 
+## Compute-plane bridge
+
+The Go plane runs no model, tensor or CUDA code. A node that has GPU work to do
+names a Python/CUDA worker and the operations that worker may run; the agent
+still verifies the Master-signed task and signs the result, but delegates the
+*execution* of those operations across the seam.
+
+```yaml
+# in an agent's config
+compute:
+  endpoint: http://127.0.0.1:9090
+  secret: <shared with the worker's SPARKNET_SHARED_SECRET>
+  operations: [infer, embed]   # must not shadow arith/digest
+  timeout: 60s
+```
+
+The closed sandbox is still the default: local operations (`arith`, `digest`)
+always run in-process and can never be shadowed, only the explicitly listed
+operations are delegated, and everything else is still refused. With no
+`compute.endpoint`, nothing is delegated. The reference worker is
+[`compute/compute_worker.py`](compute/README.md) — the blueprint's
+`sparknet_bridge.py`, generalised.
+
+```sh
+# On the GPU host: run the worker beside vLLM.
+cd compute && python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt && SPARKNET_SHARED_SECRET=… python compute_worker.py
+
+# Elsewhere: the control plane signs an infer task; the agent delegates it.
+bin/sparknet-control -master-key .state/control.key -executors node-a=<pub> \
+  -dispatch node-a -op infer -params '{"prompt":"hello gpu"}'
+```
+
+See [`docs/adr/0006-compute-plane-task-bridge.md`](docs/adr/0006-compute-plane-task-bridge.md).
+
 ## Contract provenance
 
 `spec/sparknet/` holds read-only snapshots of `sparknet/contracts/`. The fabric
@@ -210,11 +247,13 @@ When a snapshot moves, the mirrored Go in `internal/authz` and
 
 First-pass scaffold + control-plane core. The control/data-plane split, the
 signed-envelope verification, the NVFP4 codec, the QUIC transport, the live
-admin surface, GPU telemetry (via the cgo sidecar) and telemetry-aware dispatch
-are real and tested. Model inference is deliberately **not** here — that is the
-compute plane. See
+admin surface, GPU telemetry (via the cgo sidecar), telemetry-aware dispatch and
+the compute-plane task bridge are real and tested. Model inference is
+deliberately **not** here — that is the compute plane, reached over the bridge.
+See
 [`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md),
-[`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md)
-and
+[`docs/adr/0004-gpu-telemetry-sidecar.md`](docs/adr/0004-gpu-telemetry-sidecar.md),
 [`docs/adr/0005-telemetry-aware-dispatch.md`](docs/adr/0005-telemetry-aware-dispatch.md)
+and
+[`docs/adr/0006-compute-plane-task-bridge.md`](docs/adr/0006-compute-plane-task-bridge.md)
 for the decisions and their consequences.

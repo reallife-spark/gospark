@@ -15,6 +15,7 @@ import (
 	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/authz"
 	"github.com/reallife-spark/goSpark/internal/bus"
+	"github.com/reallife-spark/goSpark/internal/compute"
 	"github.com/reallife-spark/goSpark/internal/config"
 	"github.com/reallife-spark/goSpark/internal/gateway"
 	"github.com/reallife-spark/goSpark/internal/identity"
@@ -72,6 +73,11 @@ type App struct {
 	counters  *telemetry.Counters
 	gw        *gateway.Gateway
 	transport *transport.Server
+
+	// compute, when non-nil, is the Python/CUDA compute-plane worker that
+	// executes the operations named in config.Compute.Operations. It is nil
+	// (the default) when the seam is disabled, leaving the pure sandbox.
+	compute compute.Executor
 
 	verifier  *authz.Verifier
 	masterPub ed25519.PublicKey
@@ -144,6 +150,19 @@ func New(opts Options) (*App, error) {
 	}
 	a.gw = gateway.New(opts.Config.Gateway.Upstream, a.router)
 	a.gw.LocalCaps = opts.Config.Node.Capabilities
+
+	if opts.Config.Compute.Endpoint != "" {
+		ex, err := compute.NewHTTPExecutor(compute.Options{
+			Endpoint:   opts.Config.Compute.Endpoint,
+			Secret:     opts.Config.Compute.Secret,
+			Operations: opts.Config.Compute.Operations,
+			Timeout:    opts.Config.Compute.Timeout,
+		})
+		if err != nil {
+			return nil, err
+		}
+		a.compute = ex
+	}
 
 	if opts.Role == RoleAgent && len(opts.MasterPublic) == 0 {
 		return nil, errors.New("server: agent requires MasterPublic")

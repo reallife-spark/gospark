@@ -23,6 +23,7 @@ type Config struct {
 	Router    RouterConfig    `yaml:"router"`
 	Registry  RegistryConfig  `yaml:"registry"`
 	Admin     AdminConfig     `yaml:"admin"`
+	Compute   ComputeConfig   `yaml:"compute"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -92,6 +93,21 @@ type RegistryConfig struct {
 // Empty disables the surface entirely (the default).
 type AdminConfig struct {
 	Listen string `yaml:"listen"`
+}
+
+// ComputeConfig points a node's agent at a Python/CUDA compute-plane worker and
+// names the operations that worker is trusted to run. Empty Endpoint (the
+// default) disables the seam and leaves the closed operation sandbox intact.
+type ComputeConfig struct {
+	// Endpoint is the worker base URL, e.g. http://127.0.0.1:9090.
+	Endpoint string `yaml:"endpoint"`
+	// Secret is sent as X-Sparknet-Auth to the worker. Empty sends no header.
+	Secret string `yaml:"secret"`
+	// Operations is the explicit set of operation names delegated to the
+	// worker. Each must be non-empty and must not shadow a local sandbox
+	// operation (arith, digest); Validate enforces both.
+	Operations []string      `yaml:"operations"`
+	Timeout    time.Duration `yaml:"timeout"`
 }
 
 // Default returns the built-in defaults before any file or env override.
@@ -167,6 +183,20 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("GOSPARK_ADMIN_LISTEN"); v != "" {
 		cfg.Admin.Listen = v
 	}
+	if v := os.Getenv("GOSPARK_COMPUTE_ENDPOINT"); v != "" {
+		cfg.Compute.Endpoint = v
+	}
+	if v := os.Getenv("GOSPARK_COMPUTE_SECRET"); v != "" {
+		cfg.Compute.Secret = v
+	}
+	if v := os.Getenv("GOSPARK_COMPUTE_OPERATIONS"); v != "" {
+		cfg.Compute.Operations = splitList(v)
+	}
+	if v := os.Getenv("GOSPARK_COMPUTE_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Compute.Timeout = d
+		}
+	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v
 	}
@@ -214,5 +244,58 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("config: log.level %q is not one of debug|info|warn|error", c.Log.Level)
 	}
+	if err := validateCompute(c.Compute); err != nil {
+		return err
+	}
 	return nil
+}
+
+// localSandboxOperations mirrors internal/server's closed operation whitelist.
+// It is duplicated here — not imported — so config stays free of the server
+// package, and a delegated operation can never shadow a sandbox operation.
+var localSandboxOperations = map[string]struct{}{
+	"arith":  {},
+	"digest": {},
+}
+
+func validateCompute(c ComputeConfig) error {
+	if c.Endpoint == "" {
+		if len(c.Operations) > 0 {
+			return fmt.Errorf("config: compute.operations set but compute.endpoint is empty")
+		}
+		return nil
+	}
+	if len(c.Operations) == 0 {
+		return fmt.Errorf("config: compute.endpoint set but compute.operations is empty")
+	}
+	seen := map[string]struct{}{}
+	for _, op := range c.Operations {
+		op = strings.TrimSpace(op)
+		if op == "" {
+			return fmt.Errorf("config: compute.operations contains an empty name")
+		}
+		if _, ok := localSandboxOperations[op]; ok {
+			return fmt.Errorf("config: compute.operation %q shadows a local sandbox operation", op)
+		}
+		if _, dup := seen[op]; dup {
+			return fmt.Errorf("config: compute.operation %q is listed twice", op)
+		}
+		seen[op] = struct{}{}
+	}
+	if c.Timeout < 0 {
+		return fmt.Errorf("config: compute.timeout must be >= 0")
+	}
+	return nil
+}
+
+// splitList splits a comma- or space-separated list, dropping empties.
+func splitList(v string) []string {
+	fields := strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
