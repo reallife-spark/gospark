@@ -159,7 +159,9 @@ func (a *App) Run(ctx context.Context) error {
 			a.addrMu.Lock()
 			a.boundAddr = addr.String()
 			a.addrMu.Unlock()
-			a.log.Info("data plane listening", "addr", addr.String())
+			a.log.Info("data plane listening",
+				"addr", addr.String(),
+				"cert_fingerprint", a.transport.Fingerprint())
 		case <-ctx.Done():
 		}
 	}()

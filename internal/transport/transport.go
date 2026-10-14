@@ -10,11 +10,15 @@ package transport
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -36,6 +40,23 @@ type Server struct {
 	// up. It exists because Addr may be ":0"; callers that need the real port
 	// (tests, LocalAddr reporting) read it here.
 	Ready chan<- net.Addr
+
+	// tlsOnce caches the listener certificate so its fingerprint is available to
+	// a peer before the stream arrives.
+	tlsOnce        sync.Once
+	tlsConf        *tls.Config
+	tlsFingerprint string
+	tlsErr         error
+}
+
+// Fingerprint returns the hex SHA-256 of the server's data-plane certificate,
+// the value a peer must pin. It is safe to call before listening: the
+// certificate is generated on first use.
+func (s *Server) Fingerprint() string {
+	s.tlsOnce.Do(func() {
+		s.tlsConf, s.tlsFingerprint, s.tlsErr = selfSignedTLS()
+	})
+	return s.tlsFingerprint
 }
 
 // BlockHeaderFor builds the wire header for a block.
@@ -54,11 +75,13 @@ func BlockHeaderFor(blockID, originNodeID string, b *kvtransfer.Block, now time.
 
 // ListenAndServe blocks serving QUIC streams until ctx is cancelled.
 func (s *Server) ListenAndServe(ctx context.Context) error {
-	tlsConf, err := selfSignedTLS()
-	if err != nil {
-		return err
+	s.tlsOnce.Do(func() {
+		s.tlsConf, s.tlsFingerprint, s.tlsErr = selfSignedTLS()
+	})
+	if s.tlsErr != nil {
+		return s.tlsErr
 	}
-	ln, err := quic.ListenAddr(s.Addr, tlsConf, &quic.Config{
+	ln, err := quic.ListenAddr(s.Addr, s.tlsConf, &quic.Config{
 		MaxIdleTimeout:  30 * time.Second,
 		KeepAlivePeriod: 10 * time.Second,
 	})
@@ -145,18 +168,60 @@ func (s *Server) readChunks(r io.Reader) ([]byte, error) {
 	}
 }
 
-// SendBlock streams a block to addr and returns the server's ack.
+// DialOptions controls how SendBlock authenticates the peer.
+type DialOptions struct {
+	// PinnedFingerprint, if non-empty, is the hex SHA-256 of the peer's leaf
+	// certificate (see Server.Fingerprint and CertFingerprint). When set, the
+	// dial fails unless the presented certificate matches exactly.
+	PinnedFingerprint string
+}
+
+// clientTLS builds the dialer's TLS config. With a pin, verification is done by
+// comparing the raw peer certificate's fingerprint — no CA chain is trusted,
+// which is the correct model for a self-formed overlay. Without a pin the dial
+// is unauthenticated and is only acceptable in a single-process scaffold.
+func clientTLS(opts DialOptions) (*tls.Config, error) {
+	conf := &tls.Config{
+		NextProtos: []string{ALPN},
+		MinVersion: tls.VersionTLS13,
+		// The peer certificate is not CA-issued; when pinned we verify it
+		// ourselves in VerifyPeerCertificate, so the default chain check is off.
+		InsecureSkipVerify: true,
+	}
+	pin := strings.TrimSpace(opts.PinnedFingerprint)
+	if pin == "" {
+		return conf, nil
+	}
+	conf.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return errors.New("transport: peer presented no certificate")
+		}
+		got := CertFingerprint(rawCerts[0])
+		if !strings.EqualFold(got, pin) {
+			return fmt.Errorf("transport: certificate fingerprint mismatch: got %s want %s", got, strings.ToLower(pin))
+		}
+		return nil
+	}
+	return conf, nil
+}
+
+// SendBlock streams a block to addr and returns the server's ack. It performs
+// no peer authentication; prefer SendBlockWithOptions with a pinned
+// fingerprint outside a single-process test.
 func SendBlock(ctx context.Context, addr string, blockID, originNodeID string, b *kvtransfer.Block, chunkSize int) (string, error) {
+	return SendBlockWithOptions(ctx, addr, blockID, originNodeID, b, chunkSize, DialOptions{})
+}
+
+// SendBlockWithOptions streams a block to addr and returns the server's ack.
+func SendBlockWithOptions(ctx context.Context, addr string, blockID, originNodeID string, b *kvtransfer.Block, chunkSize int, opts DialOptions) (string, error) {
 	if chunkSize <= 0 {
 		chunkSize = 256 * 1024
 	}
-	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
-		// The scaffold pins nothing; a deployed node verifies the peer's
-		// overlay certificate. See docs/transport.md.
-		InsecureSkipVerify: true,
-		NextProtos:         []string{ALPN},
-		MinVersion:         tls.VersionTLS13,
-	}, &quic.Config{MaxIdleTimeout: 30 * time.Second})
+	tlsConf, err := clientTLS(opts)
+	if err != nil {
+		return "", err
+	}
+	conn, err := quic.DialAddr(ctx, addr, tlsConf, &quic.Config{MaxIdleTimeout: 30 * time.Second})
 	if err != nil {
 		return "", fmt.Errorf("transport: dial %s: %w", addr, err)
 	}

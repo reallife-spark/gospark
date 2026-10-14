@@ -64,7 +64,7 @@ Usage:
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
-  sparknetctl send-block  -addr HOST:PORT -file BLOCK.canonical [-block-id ID] [-origin NODE]
+  sparknetctl send-block  -addr HOST:PORT -file BLOCK.canonical [-block-id ID] [-origin NODE] [-pin FINGERPRINT]
 `)
 }
 
@@ -240,6 +240,7 @@ func cmdSendBlock(args []string) error {
 	blockID := fs.String("block-id", "", "block id (default: derived from digest)")
 	origin := fs.String("origin", "sparknetctl", "origin node id")
 	chunk := fs.Int("chunk", 0, "chunk size in bytes (0 = default)")
+	pin := fs.String("pin", "", "expected peer certificate SHA-256 fingerprint (hex); required outside single-process use")
 	timeout := fs.Duration("timeout", 30*time.Second, "overall timeout")
 	_ = fs.Parse(args)
 	if *addr == "" || *file == "" {
@@ -259,7 +260,9 @@ func cmdSendBlock(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	ack, err := transport.SendBlock(ctx, *addr, id, *origin, b, *chunk)
+	ack, err := transport.SendBlockWithOptions(ctx, *addr, id, *origin, b, *chunk, transport.DialOptions{
+		PinnedFingerprint: *pin,
+	})
 	if err != nil {
 		return err
 	}
