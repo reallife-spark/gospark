@@ -74,6 +74,7 @@ func TestLoadYAMLOverride(t *testing.T) {
 func TestEnvOverrides(t *testing.T) {
 	t.Setenv("GOSPARK_NODE_ID", "node-env")
 	t.Setenv("GOSPARK_BUS_URL", "nats://example:4222")
+	t.Setenv("GOSPARK_BUS_QUEUE", "control")
 	t.Setenv("GOSPARK_LOG_LEVEL", "warn")
 	t.Setenv("GOSPARK_EDGE_TOKEN_CEILING", "777")
 
@@ -86,6 +87,9 @@ func TestEnvOverrides(t *testing.T) {
 	}
 	if cfg.Bus.URL != "nats://example:4222" {
 		t.Errorf("bus url = %q", cfg.Bus.URL)
+	}
+	if cfg.Bus.Queue != "control" {
+		t.Errorf("bus queue = %q", cfg.Bus.Queue)
 	}
 	if cfg.Log.Level != "warn" {
 		t.Errorf("log level = %q", cfg.Log.Level)

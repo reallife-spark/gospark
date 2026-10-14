@@ -20,17 +20,25 @@ node:
     - cluster-serve
 
 bus:
+  # Empty url => in-memory bus (single process / tests). For a real deployment
+  # point at the same NATS/JetStream server as the control plane.
   url: ""
   subject_root: sparknet
   stream: SPARKNET
+  # queue: leave empty so this node keeps its own durable task consumer and
+  # resumes after a mesh drop. Set a shared value only for interchangeable
+  # replicas of the same logical worker.
+  queue: ""
 
 transport:
-  listen: 0.0.0.0:7443
+  # HTTP/3 (QUIC) data plane for NVFP4 KV blocks. Use a port distinct from the
+  # control plane when both run on one host.
+  listen: 0.0.0.0:7444
   chunk_size: 262144
   timeout: 10s
 
 gateway:
-  listen: 127.0.0.1:8080
+  listen: 127.0.0.1:8081
   upstream: http://127.0.0.1:8000
 
 mesh:

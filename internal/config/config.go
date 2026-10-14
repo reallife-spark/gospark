@@ -36,6 +36,10 @@ type BusConfig struct {
 	URL         string `yaml:"url"`          // nats://... ; empty => in-memory
 	SubjectRoot string `yaml:"subject_root"` // default sparknet
 	Stream      string `yaml:"stream"`       // JetStream stream name
+	// Queue, when set, makes bus subscribers load-balance across instances
+	// that share it (HA replicas). Empty means each instance receives its own
+	// copy (fan-out), which is what a single control plane plus observers want.
+	Queue string `yaml:"queue"`
 }
 
 type TransportConfig struct {
@@ -128,6 +132,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_BUS_URL"); v != "" {
 		cfg.Bus.URL = v
+	}
+	if v := os.Getenv("GOSPARK_BUS_QUEUE"); v != "" {
+		cfg.Bus.Queue = v
 	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v

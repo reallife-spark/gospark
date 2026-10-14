@@ -207,6 +207,7 @@ func (a *App) dialBus() (bus.Bus, error) {
 		Name:     "gospark-" + string(a.role) + "-" + a.id.NodeID,
 		Stream:   a.cfg.Bus.Stream,
 		Subjects: []string{a.cfg.Bus.SubjectRoot + ".>"},
+		Queue:    a.cfg.Bus.Queue,
 	})
 	if err != nil {
 		return nil, err

@@ -80,6 +80,19 @@ bin/sparknet-control -config configs/control.example.yaml \
 The in-memory bus only works within one process. For two processes, point both
 at a NATS server with `GOSPARK_BUS_URL=nats://host:4222` (or the `bus.url` key).
 
+```sh
+make nats-dev                       # JetStream server on 127.0.0.1:4222
+export GOSPARK_BUS_URL=nats://127.0.0.1:4222
+# then run sparknet-control and sparknet-agent as above, in separate shells
+```
+
+With JetStream the bus is store-and-forward: a task published while an agent is
+off the mesh is delivered when it reconnects (at-least-once). Each instance gets
+its own durable consumer, so the control plane and a monitoring subscriber both
+see every result; set `bus.queue` to a shared value only to make HA replicas
+load-balance instead. `make test-nats` runs the integration tests against a
+throwaway server (they skip if `nats-server` is not installed).
+
 ## Contract provenance
 
 `spec/sparknet/` holds read-only snapshots of `sparknet/contracts/`. The fabric

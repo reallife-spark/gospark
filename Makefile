@@ -10,6 +10,8 @@ help:
 	@echo "  make build        build all binaries into $(BIN)/"
 	@echo "  make test         run all tests"
 	@echo "  make test-race    run tests with the race detector"
+	@echo "  make test-nats    run the NATS/JetStream integration tests"
+	@echo "  make nats-dev     start a local JetStream server for manual runs"
 	@echo "  make cover        coverage summary"
 	@echo "  make vet          go vet ./..."
 	@echo "  make fmt          gofmt -w ."
@@ -33,6 +35,19 @@ test:
 .PHONY: test-race
 test-race:
 	$(GO) test -race $(PKGS)
+
+# The NATS integration tests skip themselves when nats-server is absent; this
+# target names them explicitly so a missing server is visible rather than silent.
+.PHONY: test-nats
+test-nats:
+	$(GO) test -run 'NATS|OverNATS' -v $(PKGS)
+
+# Throwaway JetStream server for manual end-to-end runs. Point both configs at
+# nats://127.0.0.1:4222 and leave bus.url empty to use the in-memory bus instead.
+.PHONY: nats-dev
+nats-dev:
+	@mkdir -p .state/nats
+	nats-server -a 127.0.0.1 -p 4222 -js -sd .state/nats
 
 .PHONY: cover
 cover:

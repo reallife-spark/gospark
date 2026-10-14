@@ -19,10 +19,14 @@ node:
 
 bus:
   # Empty url => in-memory bus (single process / tests). For a real deployment
-  # set a NATS/JetStream URL, e.g. nats://10.44.0.1:4222.
+  # set a NATS/JetStream URL, e.g. nats://10.44.0.1:4222. The server must be
+  # started with JetStream enabled (nats-server -js) for store-and-forward.
   url: ""
   subject_root: sparknet
   stream: SPARKNET
+  # queue: leave empty for a single control plane. Set the same value on HA
+  # replicas so they load-balance tasks/results instead of double-processing.
+  queue: ""
 
 transport:
   # HTTP/3 (QUIC) data plane for NVFP4 KV blocks.

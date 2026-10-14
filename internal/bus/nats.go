@@ -15,9 +15,10 @@ import (
 // subjects use JetStream so a node that drops off the WireGuard mesh resumes
 // where it left off instead of losing work.
 type NATS struct {
-	nc  *nats.Conn
-	js  nats.JetStreamContext
-	src string // subject root, for logging
+	nc    *nats.Conn
+	js    nats.JetStreamContext
+	name  string // connection name: the consumer identity
+	queue string // optional queue group: subscribers sharing it load-balance
 }
 
 // NATSOptions configures the connection.
@@ -27,6 +28,24 @@ type NATSOptions struct {
 	Timeout  time.Duration
 	Stream   string // JetStream stream to ensure (optional)
 	Subjects []string
+	// Queue, when set, makes all connections that share it load-balance their
+	// deliveries instead of each receiving a copy. Two HA control-plane
+	// replicas set the same Queue; independent observers leave it empty so each
+	// gets its own copy (fan-out).
+	Queue string
+}
+
+// consumerID is the identity under which JetStream consumers are named. With a
+// queue it is the queue (so members share one consumer); without, it is the
+// connection name (so distinct connections fan out).
+func (n *NATS) consumerID() string {
+	if n.queue != "" {
+		return n.queue
+	}
+	if n.name != "" {
+		return n.name
+	}
+	return "anon"
 }
 
 // Connect dials NATS and, if a stream name is given, ensures the stream exists
@@ -44,7 +63,7 @@ func Connect(opts NATSOptions) (*NATS, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bus: connect %s: %w", opts.URL, err)
 	}
-	n := &NATS{nc: nc}
+	n := &NATS{nc: nc, name: opts.Name, queue: opts.Queue}
 	if opts.Stream != "" {
 		js, err := nc.JetStream()
 		if err != nil {
@@ -96,22 +115,55 @@ func (n *NATS) Publish(ctx context.Context, subject string, data []byte) error {
 }
 
 // Subscribe registers a durable handler when JetStream is active.
+//
+// The handler receives a context carrying a ReplyFn when the message has a
+// reply subject, so bus.Reply works identically on NATS and the Memory bus.
+// (JetStream messages have no reply subject; Request/Reply is a core-NATS
+// feature and is only available on a bus connected without a stream.)
 func (n *NATS) Subscribe(_ context.Context, subject string, h Handler) (Subscription, error) {
 	wrapped := func(msg *nats.Msg) {
-		if err := h(context.Background(), msg.Subject, msg.Data); err != nil {
-			_ = msg.Nak()
+		ctx := context.Background()
+		if msg.Reply != "" {
+			nc, reply := n.nc, msg.Reply
+			ctx = context.WithValue(ctx, replyKey{}, ReplyFn(func(b []byte) {
+				_ = nc.Publish(reply, b)
+			}))
+		}
+		if err := h(ctx, msg.Subject, msg.Data); err != nil {
+			if n.js != nil {
+				_ = msg.Nak()
+			}
 			return
 		}
-		_ = msg.Ack()
+		if n.js != nil {
+			_ = msg.Ack()
+		}
 	}
 	if n.js != nil {
-		sub, err := n.js.QueueSubscribe(subject, "gospark", wrapped, nats.Durable("gospark-"+sanitise(subject)), nats.ManualAck())
+		durable := "gospark_" + sanitise(n.consumerID()) + "_" + sanitise(subject)
+		var (
+			sub Subscription
+			err error
+		)
+		if n.queue != "" {
+			sub, err = n.js.QueueSubscribe(subject, n.queue, wrapped, nats.Durable(durable), nats.ManualAck())
+		} else {
+			sub, err = n.js.Subscribe(subject, wrapped, nats.Durable(durable), nats.ManualAck())
+		}
 		if err != nil {
 			return nil, fmt.Errorf("bus: js subscribe %s: %w", subject, err)
 		}
 		return sub, nil
 	}
-	sub, err := n.nc.Subscribe(subject, wrapped)
+	var (
+		sub Subscription
+		err error
+	)
+	if n.queue != "" {
+		sub, err = n.nc.QueueSubscribe(subject, n.queue, wrapped)
+	} else {
+		sub, err = n.nc.Subscribe(subject, wrapped)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("bus: subscribe %s: %w", subject, err)
 	}

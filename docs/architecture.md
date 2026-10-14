@@ -36,6 +36,25 @@ The asymmetry is the whole security model: **a task is authoritative because it
 is signed, not because it arrived on the bus; a result proves provenance, not
 permission.**
 
+## The bus (`internal/bus`)
+
+The bus carries the signed bytes and nothing more. Two implementations satisfy
+one `Bus` interface:
+
+- **Memory** — in-process fan-out, for tests and single-process runs.
+- **NATS/JetStream** — the production choice. Plain subjects carry low-latency
+  `register`/`result` traffic; a JetStream stream over the same subject root
+  gives **store-and-forward**, so a task published while an agent is off the
+  WireGuard mesh is delivered when it reconnects (at-least-once).
+
+Consumer naming is what decides fan-out versus load-balance. By default each
+connection gets its own durable consumer (named from the connection), so the
+control plane and a monitoring subscriber both see every result. Setting a
+shared `bus.queue` makes connections compete instead — the right choice for HA
+control-plane replicas, the wrong one for an independent observer. `Subscribe`
+also injects a reply function into the handler context so `Request`/`Reply`
+behaves identically on both implementations.
+
 ## Verification order (`internal/authz`)
 
 `VerifyTask` fails closed and distinguishes refusals so an operator can tell an
