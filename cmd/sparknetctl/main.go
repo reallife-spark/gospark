@@ -69,6 +69,7 @@ Usage:
   sparknetctl registry sign   -master-key FILE (-authorizations FILE | -node-key FILE -caps a,b) -out FILE [-ttl 8760h] [-issued-at RFC3339]
   sparknetctl registry verify -registry FILE (-master-pub B64 | -master-key FILE)
   sparknetctl registry show   -registry FILE
+  sparknetctl registry revoke -master-key FILE -registry FILE -node ID [-unrevoke] [-out FILE]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -147,8 +148,10 @@ func cmdRegistry(args []string) error {
 		return cmdRegistryVerify(args[1:])
 	case "show":
 		return cmdRegistryShow(args[1:])
+	case "revoke":
+		return cmdRegistryRevoke(args[1:])
 	default:
-		return fmt.Errorf("registry: unknown action %q (want sign|verify|show)", args[0])
+		return fmt.Errorf("registry: unknown action %q (want sign|verify|show|revoke)", args[0])
 	}
 }
 
@@ -217,6 +220,55 @@ func cmdRegistrySign(args []string) error {
 		fmt.Println(string(data))
 	}
 	fmt.Printf("nodes=%d digest=%s\n", len(reg.Authorizations), digest)
+	return nil
+}
+
+func cmdRegistryRevoke(args []string) error {
+	fs := flag.NewFlagSet("registry revoke", flag.ExitOnError)
+	masterKey := fs.String("master-key", "", "master private key file")
+	registry := fs.String("registry", "", "input registry file")
+	node := fs.String("node", "", "node id to revoke")
+	unrevoke := fs.Bool("unrevoke", false, "clear the revocation instead (reinstatement)")
+	out := fs.String("out", "", "output registry file (default stdout)")
+	_ = fs.Parse(args)
+	if *masterKey == "" || *registry == "" || *node == "" {
+		return fmt.Errorf("registry revoke: -master-key, -registry and -node are required")
+	}
+	master, err := identity.Load(*masterKey)
+	if err != nil {
+		return err
+	}
+	reg, err := registryfile.Load(*registry)
+	if err != nil {
+		return err
+	}
+	if err := authz.SetRevocation(reg, *node, !*unrevoke); err != nil {
+		return err
+	}
+	if err := authz.SignRegistry(master, reg); err != nil {
+		return err
+	}
+	entry, _ := authz.NewRegistry(reg).Get(*node)
+	state := "revoked"
+	if !entry.Revoked {
+		state = "reinstated"
+	}
+	data, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if *out != "" {
+		if err := os.WriteFile(*out, append(data, '\n'), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s\n", *out)
+	} else {
+		fmt.Println(string(data))
+	}
+	digest, _ := authz.RegistryDigest(reg)
+	view := authz.NewRegistry(reg)
+	fmt.Fprintf(os.Stderr, "%s node=%s latest_issued=%s digest=%s\n",
+		state, *node, view.LatestIssued().Format(time.RFC3339), digest)
 	return nil
 }
 

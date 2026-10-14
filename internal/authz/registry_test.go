@@ -180,6 +180,54 @@ func TestRegistryNotYetValid(t *testing.T) {
 	}
 }
 
+func TestSetRevocation(t *testing.T) {
+	master := newSigner(t)
+	a, _ := identity.Generate("node-a", identity.RolePeer)
+	b, _ := identity.Generate("node-b", identity.RolePeer)
+	reg := registryOf(
+		authzEntry(t, master, a, authz.CapClusterServe),
+		authzEntry(t, master, b, authz.CapTelemetry),
+	)
+
+	// Revoke node-a and re-sign: it must verify and be denied, while node-b is
+	// untouched; the fresh stamp advances the rollback guard.
+	before := authz.NewRegistry(reg).LatestIssued()
+	if err := authz.SetRevocation(reg, "node-a", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := authz.SignRegistry(master, reg); err != nil {
+		t.Fatal(err)
+	}
+	if err := authz.VerifyRegistry(master.Public, reg); err != nil {
+		t.Fatalf("verify after revoke: %v", err)
+	}
+	view := authz.NewRegistry(reg)
+	if err := view.Authorized("node-a", authz.CapClusterServe, time.Now()); !errors.Is(err, authz.ErrRegistryRevoked) {
+		t.Fatalf("revoked node err = %v, want ErrRegistryRevoked", err)
+	}
+	if err := view.Authorized("node-b", authz.CapTelemetry, time.Now()); err != nil {
+		t.Fatalf("node-b should be unaffected: %v", err)
+	}
+	if !view.LatestIssued().After(before) {
+		t.Fatalf("revocation must advance LatestIssued: before=%s after=%s", before, view.LatestIssued())
+	}
+
+	// Un-revoke (a fresh Master signature) restores the node.
+	if err := authz.SetRevocation(reg, "node-a", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := authz.SignRegistry(master, reg); err != nil {
+		t.Fatal(err)
+	}
+	if err := authz.NewRegistry(reg).Authorized("node-a", authz.CapClusterServe, time.Now()); err != nil {
+		t.Fatalf("un-revoked node should be authorized: %v", err)
+	}
+
+	if err := authz.SetRevocation(reg, "node-z", true); !errors.Is(err, authz.ErrRegistryUnknownNode) {
+		t.Fatalf("unknown node err = %v, want ErrRegistryUnknownNode", err)
+	}
+}
+
 func TestRegistryDigestStable(t *testing.T) {
 	master := newSigner(t)
 	a, _ := identity.Generate("node-a", identity.RolePeer)

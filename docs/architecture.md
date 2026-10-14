@@ -98,10 +98,13 @@ agent independently refuses a task when its adopted registry does not authorize
 *itself* (`registryAllowsSelf`) — defense in depth, so a task injected straight
 onto the bus is still rejected.
 
-`sparknetctl registry sign|verify|show` mints and inspects registries; a control
-plane loads authorizations from `-registry` (and re-signs each entry, clearing
-its `issued_at` to force a fresh stamp), while an agent loads the signed file
-and verifies every entry against its pinned master key.
+`sparknetctl registry sign|verify|show` mints and inspects registries, and
+`registry revoke` flips one node's `revoked` flag and re-signs (a fresh stamp
+advances the rollback guard; `-unrevoke` reinstates). Only the Master can do
+either, because the flag sits inside the signature. A control plane loads
+authorizations from `-registry` (and re-signs each entry, clearing its
+`issued_at` to force a fresh stamp), while an agent loads the signed file and
+verifies every entry against its pinned master key.
 
 ## Verification order (`internal/authz`)
 

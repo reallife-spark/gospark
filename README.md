@@ -106,6 +106,12 @@ bin/sparknetctl registry sign -master-key .state/control.key \
 bin/sparknetctl registry verify -registry .state/registry.json -master-key .state/control.key
 bin/sparknetctl registry show   -registry .state/registry.json
 
+# Revoke (and reinstate) a node: only the Master can, since the flag is signed.
+bin/sparknetctl registry revoke -master-key .state/control.key \
+  -registry .state/registry.json -node node-a -out .state/registry.json
+bin/sparknetctl registry revoke -master-key .state/control.key \
+  -registry .state/registry.json -node node-a -unrevoke -out .state/registry.json
+
 # Control signs and serves the registry; the agent adopts and verifies it.
 bin/sparknet-control -config configs/control.example.yaml \
   -master-key .state/control.key -registry .state/registry.json -dispatch node-a

@@ -137,6 +137,24 @@ func SignRegistry(master *identity.Identity, reg *apiv1.NodeRegistry) error {
 	return nil
 }
 
+// SetRevocation flips one node's revocation flag and clears its issued_at so a
+// subsequent SignRegistry re-signs it with a fresh stamp (advancing the rollback
+// guard). Revoking widens nothing — the flag lives inside the signature, so only
+// the Master can set it, and reinstating also needs a fresh Master signature.
+func SetRevocation(reg *apiv1.NodeRegistry, nodeID string, revoked bool) error {
+	if reg == nil {
+		return errors.New("authz: nil registry")
+	}
+	for i := range reg.Authorizations {
+		if reg.Authorizations[i].Identity.NodeID == nodeID {
+			reg.Authorizations[i].Revoked = revoked
+			reg.Authorizations[i].IssuedAt = ""
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q", ErrRegistryUnknownNode, nodeID)
+}
+
 // VerifyRegistry checks every entry against the pinned master public key. It
 // refuses an unknown schema, and per entry an unknown capability, an identity
 // that does not match its fingerprint, and a bad signature. It does not check
@@ -375,9 +393,12 @@ func normaliseRegistry(reg *apiv1.NodeRegistry) {
 	reg.Authorizations = out
 }
 
-// isoTime renders t as the fabric does: RFC3339 in UTC with a trailing Z.
+// isoTime renders t as the fabric does: RFC3339 in UTC with a trailing Z. The
+// fabric's isoformat() carries sub-second precision, so goSpark keeps it too —
+// a whole-second truncation would let two re-signs in the same second share a
+// stamp and stall the rollback guard.
 func isoTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
+	return t.UTC().Format(time.RFC3339Nano)
 }
 
 // parseISO parses the fabric's ISO-8601 stamps, tolerating fractional seconds.
