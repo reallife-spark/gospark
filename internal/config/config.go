@@ -21,6 +21,7 @@ type Config struct {
 	Gateway   GatewayConfig   `yaml:"gateway"`
 	Mesh      MeshConfig      `yaml:"mesh"`
 	Router    RouterConfig    `yaml:"router"`
+	Registry  RegistryConfig  `yaml:"registry"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -40,6 +41,9 @@ type BusConfig struct {
 	// that share it (HA replicas). Empty means each instance receives its own
 	// copy (fan-out), which is what a single control plane plus observers want.
 	Queue string `yaml:"queue"`
+	// MaxDeliver caps redeliveries of a failing JetStream message before it is
+	// dead-lettered. Zero uses the bus default.
+	MaxDeliver int `yaml:"max_deliver"`
 }
 
 type TransportConfig struct {
@@ -72,6 +76,13 @@ type RouterConfig struct {
 type LogConfig struct {
 	Level  string `yaml:"level"`  // debug|info|warn|error
 	Format string `yaml:"format"` // text|json
+}
+
+// RegistryConfig points at a Master-signed node registry on disk. The control
+// plane treats the file's authorizations as its own and re-signs them; an agent
+// loads the signed file and verifies it against the pinned master key.
+type RegistryConfig struct {
+	File string `yaml:"file"`
 }
 
 // Default returns the built-in defaults before any file or env override.
@@ -135,6 +146,14 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_BUS_QUEUE"); v != "" {
 		cfg.Bus.Queue = v
+	}
+	if v := os.Getenv("GOSPARK_BUS_MAX_DELIVER"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Bus.MaxDeliver = n
+		}
+	}
+	if v := os.Getenv("GOSPARK_REGISTRY_FILE"); v != "" {
+		cfg.Registry.File = v
 	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v

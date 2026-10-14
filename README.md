@@ -18,8 +18,8 @@ while a GPU job is in flight.
 |---|---|
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |
 | `cmd/sparknet-agent` | a node: reports health, verifies signed tasks, executes a closed operation whitelist, returns attested results |
-| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, block decode/send |
-| `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary |
+| `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify, block decode/send |
+| `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary + the signed node registry |
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
 | `internal/kvtransfer` | the reference NVFP4 (E2M1) codec and delta cache |
 | `internal/transport` | the HTTP/3 (QUIC) data plane for KV blocks |
@@ -92,6 +92,31 @@ its own durable consumer, so the control plane and a monitoring subscriber both
 see every result; set `bus.queue` to a shared value only to make HA replicas
 load-balance instead. `make test-nats` runs the integration tests against a
 throwaway server (they skip if `nats-server` is not installed).
+
+## Authorize nodes with a signed registry
+
+A registry is the Master's signed statement of which nodes may hold which
+capabilities. Without one, the control plane runs in open mode and an agent is
+permissive; with one, both refuse a node the registry does not authorize.
+
+```sh
+# Sign a registry authorizing node-a for compute; keep control.key 0600.
+bin/sparknetctl registry sign -master-key .state/control.key \
+  -node-key .state/node.key -caps cluster-serve,telemetry -out .state/registry.json
+bin/sparknetctl registry verify -registry .state/registry.json -master-key .state/control.key
+bin/sparknetctl registry show   -registry .state/registry.json
+
+# Control signs and serves the registry; the agent adopts and verifies it.
+bin/sparknet-control -config configs/control.example.yaml \
+  -master-key .state/control.key -registry .state/registry.json -dispatch node-a
+bin/sparknet-agent -config configs/agent.example.yaml \
+  -key .state/node.key -master-pub "$MASTER_PUB" -registry .state/registry.json
+```
+
+The trust anchor is the agent's pinned `-master-pub`, not the key embedded in
+the file. `Revoked` and `IssuedAtUnix` live inside the signature, so only the
+Master can revoke, and an agent refuses a replayed older registry. See
+[`docs/architecture.md`](docs/architecture.md) for the mechanism.
 
 ## Contract provenance
 

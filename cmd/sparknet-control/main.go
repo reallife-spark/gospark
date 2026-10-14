@@ -19,6 +19,7 @@ import (
 	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/config"
 	"github.com/reallife-spark/goSpark/internal/identity"
+	"github.com/reallife-spark/goSpark/internal/registryfile"
 	"github.com/reallife-spark/goSpark/internal/server"
 )
 
@@ -34,6 +35,7 @@ func run() error {
 	cfgPath := fs.String("config", "", "config file (YAML)")
 	masterKey := fs.String("master-key", "", "control-plane identity key file (holds the signing key)")
 	executors := fs.String("executors", "", "comma list node_id=public_key_b64 of trusted executors")
+	registryFile := fs.String("registry", "", "node authorizations file to sign and serve (overrides config registry.file)")
 	transportListen := fs.String("transport-listen", "", "override transport listen address")
 	dispatch := fs.String("dispatch", "", "dispatch a task to this node id, then keep serving")
 	op := fs.String("op", "arith", "operation for -dispatch")
@@ -62,11 +64,17 @@ func run() error {
 		return err
 	}
 
+	regDoc, err := loadRegistryDoc(*registryFile, cfg.Registry.File)
+	if err != nil {
+		return err
+	}
+
 	app, err := server.New(server.Options{
 		Config:          cfg,
 		Identity:        id,
 		Role:            server.RoleControl,
 		ExecutorPublic:  pubs,
+		Registry:        regDoc,
 		TransportListen: *transportListen,
 	})
 	if err != nil {
@@ -120,6 +128,28 @@ func signTask(id *identity.Identity, op, params string, ttl time.Duration) (apiv
 	}
 	env.SignatureB64 = identity.EncodeSignature(sig)
 	return env, nil
+}
+
+// loadRegistryDoc reads the authorizations the control plane will sign and
+// serve. If the file is a full registry, its issue time and expiry are carried
+// over so a peer handed the same file sees an identical registry; otherwise
+// only the authorization entries are taken and a fresh issue time is stamped.
+func loadRegistryDoc(flagPath, cfgPath string) (*apiv1.NodeRegistry, error) {
+	path := flagPath
+	if path == "" {
+		path = cfgPath
+	}
+	if path == "" {
+		return nil, nil
+	}
+	if reg, err := registryfile.Load(path); err == nil {
+		return reg, nil
+	}
+	entries, err := registryfile.LoadAuthorizations(path)
+	if err != nil {
+		return nil, err
+	}
+	return &apiv1.NodeRegistry{Authorizations: entries}, nil
 }
 
 func parseExecutors(s string) (map[string]ed25519.PublicKey, error) {

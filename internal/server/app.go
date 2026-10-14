@@ -45,6 +45,12 @@ type Options struct {
 	// accepts. Required for RoleControl when results are expected.
 	ExecutorPublic map[string]ed25519.PublicKey // node_id -> public key
 
+	// Registry is the Master-signed node registry. On RoleControl it is the
+	// authoritative set of authorizations the control plane signs and serves;
+	// on RoleAgent it is an optional already-signed registry to adopt directly
+	// (an agent can also adopt one from the bus).
+	Registry *apiv1.NodeRegistry
+
 	// TransportListen overrides the config transport listen address (use ":0"
 	// in tests).
 	TransportListen string
@@ -71,7 +77,13 @@ type App struct {
 	masterPub    ed25519.PublicKey
 	executorPubs map[string]ed25519.PublicKey
 
-	registry *Registry
+	registry *Registry // node health reports (control plane)
+
+	// nodeRegistry is the authorized-nodes view: authored and served by the
+	// control plane, adopted and enforced by the agent.
+	nodeRegistry *authz.Registry
+	registryDoc  *apiv1.NodeRegistry
+	regMu        sync.RWMutex
 
 	transportAddr string
 	addrMu        sync.Mutex
@@ -103,6 +115,7 @@ func New(opts Options) (*App, error) {
 		counters:      &telemetry.Counters{},
 		masterPub:     opts.MasterPublic,
 		executorPubs:  opts.ExecutorPublic,
+		registryDoc:   opts.Registry,
 		transportAddr: opts.Config.Transport.Listen,
 		injectedBus:   opts.Bus,
 		ownsBus:       opts.Bus == nil,
@@ -203,11 +216,12 @@ func (a *App) dialBus() (bus.Bus, error) {
 		return bus.NewMemory(), nil
 	}
 	n, err := bus.Connect(bus.NATSOptions{
-		URL:      a.cfg.Bus.URL,
-		Name:     "gospark-" + string(a.role) + "-" + a.id.NodeID,
-		Stream:   a.cfg.Bus.Stream,
-		Subjects: []string{a.cfg.Bus.SubjectRoot + ".>"},
-		Queue:    a.cfg.Bus.Queue,
+		URL:        a.cfg.Bus.URL,
+		Name:       "gospark-" + string(a.role) + "-" + a.id.NodeID,
+		Stream:     a.cfg.Bus.Stream,
+		Subjects:   []string{a.cfg.Bus.SubjectRoot + ".>"},
+		Queue:      a.cfg.Bus.Queue,
+		MaxDeliver: a.cfg.Bus.MaxDeliver,
 	})
 	if err != nil {
 		return nil, err

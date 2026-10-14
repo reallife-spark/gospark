@@ -55,6 +55,43 @@ control-plane replicas, the wrong one for an independent observer. `Subscribe`
 also injects a reply function into the handler context so `Request`/`Reply`
 behaves identically on both implementations.
 
+A failing handler is Nak'd, so JetStream redelivers. Unbounded redelivery would
+let a poison message (bad signature, reused nonce) spin a node forever, so every
+durable consumer sets a delivery cap (`bus.max_deliver`, default 5); past it the
+message is dead-lettered.
+
+## The signed node registry (`internal/authz/registry.go`)
+
+Authority in this fabric comes from key possession, not a grant: the Master
+signs, a peer verifies. The **node registry** is that statement of authority —
+which nodes may hold which capabilities.
+
+- It is a whole-document signature, not a per-entry one: `SignRegistry` fills
+  `MasterPublicKeyB64`, normalises the entries and signs the canonical bytes
+  with `SignatureB64` blanked. A caller cannot half-sign a registry.
+- The trust anchor is the **pinned master public key** a node is configured
+  with (`-master-pub`), not the `master_public_key_b64` embedded in the file —
+  that field is informational, so a forged registry cannot nominate its own
+  signer.
+- `Revoked` sits *inside* the signature, so only the Master can flip it.
+- `IssuedAtUnix` is monotonic: an agent refuses a registry older than the one it
+  already holds (`ErrRegistryRollback`), which stops a replay of a pre-revocation
+  document.
+- An empty registry authorizes nobody; a control plane with no registry at all
+  runs in explicit *open mode* (a logged warning), and an agent with no adopted
+  registry is permissive — the legacy single-process posture.
+
+The registry is enforced twice, client-side. The control plane refuses to
+dispatch to a node the registry does not authorize (`authorizeNode`), and the
+agent independently refuses a task when its adopted registry does not authorize
+*itself* (`registryAllowsSelf`) — defense in depth, so a task injected straight
+onto the bus is still rejected.
+
+`sparknetctl registry sign|verify|show` mints and inspects registries; a control
+plane loads authorizations from `-registry` (and re-signs them, stamping a fresh
+issue time), while an agent loads the signed file and verifies it against its
+pinned master key.
+
 ## Verification order (`internal/authz`)
 
 `VerifyTask` fails closed and distinguishes refusals so an operator can tell an

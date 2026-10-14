@@ -49,6 +49,7 @@ const (
 	KindHealth   = "health"
 	KindTask     = "task"
 	KindResult   = "result"
+	KindRegistry = "registry"
 	KindJob      = "job"
 	KindDecision = "decision"
 	KindDelta    = "delta"

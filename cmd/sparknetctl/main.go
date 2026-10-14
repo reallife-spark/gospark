@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,9 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/authz"
 	"github.com/reallife-spark/goSpark/internal/identity"
 	"github.com/reallife-spark/goSpark/internal/kvtransfer"
+	"github.com/reallife-spark/goSpark/internal/registryfile"
 	"github.com/reallife-spark/goSpark/internal/router"
 	"github.com/reallife-spark/goSpark/internal/transport"
 )
@@ -43,6 +46,8 @@ func main() {
 		err = cmdSendBlock(os.Args[2:])
 	case "ops":
 		err = cmdOps()
+	case "registry":
+		err = cmdRegistry(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -61,6 +66,9 @@ Usage:
   sparknetctl fingerprint -key FILE
   sparknetctl caps
   sparknetctl ops
+  sparknetctl registry sign   -master-key FILE (-authorizations FILE | -node-key FILE -caps a,b) -out FILE [-issued-at UNIX] [-expires-at UNIX]
+  sparknetctl registry verify -registry FILE (-master-pub B64 | -master-key FILE)
+  sparknetctl registry show   -registry FILE
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -121,6 +129,164 @@ func cmdOps() error {
 		fmt.Println(op)
 	}
 	return nil
+}
+
+// cmdRegistry signs, verifies and inspects Master-signed node registries.
+func cmdRegistry(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("registry: expected sign|verify|show")
+	}
+	switch args[0] {
+	case "sign":
+		return cmdRegistrySign(args[1:])
+	case "verify":
+		return cmdRegistryVerify(args[1:])
+	case "show":
+		return cmdRegistryShow(args[1:])
+	default:
+		return fmt.Errorf("registry: unknown action %q (want sign|verify|show)", args[0])
+	}
+}
+
+func cmdRegistrySign(args []string) error {
+	fs := flag.NewFlagSet("registry sign", flag.ExitOnError)
+	masterKey := fs.String("master-key", "", "master private key file")
+	authFile := fs.String("authorizations", "", "JSON file: array of authorizations or a {authorizations:[...]} object")
+	nodeKey := fs.String("node-key", "", "convenience: build a single entry from this node key file")
+	caps := fs.String("caps", "", "comma-separated capabilities for -node-key")
+	out := fs.String("out", "", "output registry file (default stdout)")
+	issued := fs.Int64("issued-at", time.Now().Unix(), "registry issue time (unix seconds)")
+	expires := fs.Int64("expires-at", 0, "optional registry expiry (unix seconds)")
+	_ = fs.Parse(args)
+	if *masterKey == "" {
+		return fmt.Errorf("registry sign: -master-key is required")
+	}
+	master, err := identity.Load(*masterKey)
+	if err != nil {
+		return err
+	}
+	var entries []apiv1.NodeAuthorization
+	switch {
+	case *authFile != "":
+		entries, err = loadAuthorizations(*authFile)
+		if err != nil {
+			return err
+		}
+	case *nodeKey != "":
+		id, err := identity.Load(*nodeKey)
+		if err != nil {
+			return err
+		}
+		entries = []apiv1.NodeAuthorization{{
+			NodeID:       id.NodeID,
+			Fingerprint:  id.Fingerprint(),
+			PublicKeyB64: id.PublicKeyB64(),
+			Capabilities: splitCSV(*caps),
+			IssuedAtUnix: *issued,
+		}}
+	default:
+		return fmt.Errorf("registry sign: need -authorizations FILE or -node-key FILE")
+	}
+	reg := &apiv1.NodeRegistry{
+		IssuedAtUnix:   *issued,
+		ExpiresAtUnix:  *expires,
+		Authorizations: entries,
+	}
+	if err := authz.SignRegistry(master, reg); err != nil {
+		return err
+	}
+	digest, err := authz.RegistryDigest(reg)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if *out != "" {
+		if err := os.WriteFile(*out, append(data, '\n'), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s\n", *out)
+	} else {
+		fmt.Println(string(data))
+	}
+	fmt.Printf("nodes=%d digest=%s\n", len(reg.Authorizations), digest)
+	return nil
+}
+
+func cmdRegistryVerify(args []string) error {
+	fs := flag.NewFlagSet("registry verify", flag.ExitOnError)
+	regFile := fs.String("registry", "", "registry file")
+	masterPub := fs.String("master-pub", "", "master public key (base64)")
+	masterKey := fs.String("master-key", "", "master key file (alternative to -master-pub)")
+	_ = fs.Parse(args)
+	if *regFile == "" {
+		return fmt.Errorf("registry verify: -registry is required")
+	}
+	pub, err := resolveMasterPub(*masterPub, *masterKey)
+	if err != nil {
+		return err
+	}
+	reg, err := loadRegistry(*regFile)
+	if err != nil {
+		return err
+	}
+	if err := authz.VerifyRegistry(pub, reg); err != nil {
+		return err
+	}
+	digest, _ := authz.RegistryDigest(reg)
+	fmt.Printf("OK nodes=%d digest=%s issued=%d\n", len(reg.Authorizations), digest, reg.IssuedAtUnix)
+	return nil
+}
+
+func cmdRegistryShow(args []string) error {
+	fs := flag.NewFlagSet("registry show", flag.ExitOnError)
+	regFile := fs.String("registry", "", "registry file")
+	_ = fs.Parse(args)
+	if *regFile == "" {
+		return fmt.Errorf("registry show: -registry is required")
+	}
+	reg, err := loadRegistry(*regFile)
+	if err != nil {
+		return err
+	}
+	digest, _ := authz.RegistryDigest(reg)
+	fmt.Printf("schema=%s master=%s issued=%d nodes=%d digest=%s\n",
+		reg.SchemaVersion, reg.MasterPublicKeyB64, reg.IssuedAtUnix, len(reg.Authorizations), digest)
+	for _, e := range reg.Authorizations {
+		state := "active"
+		if e.Revoked {
+			state = "REVOKED"
+		}
+		fmt.Printf("  %s\t%s\tcaps=%v\n", e.NodeID, state, e.Capabilities)
+	}
+	return nil
+}
+
+func loadRegistry(path string) (*apiv1.NodeRegistry, error) {
+	return registryfile.Load(path)
+}
+
+// loadAuthorizations accepts either a bare JSON array of authorizations or an
+// object with an "authorizations" field.
+func loadAuthorizations(path string) ([]apiv1.NodeAuthorization, error) {
+	return registryfile.LoadAuthorizations(path)
+}
+
+func resolveMasterPub(pubB64, keyFile string) (ed25519.PublicKey, error) {
+	switch {
+	case pubB64 != "":
+		return identity.ParsePublicKeyB64(pubB64)
+	case keyFile != "":
+		id, err := identity.Load(keyFile)
+		if err != nil {
+			return nil, err
+		}
+		return id.Public, nil
+	default:
+		return nil, fmt.Errorf("need -master-pub or -master-key")
+	}
 }
 
 func cmdRoute(args []string) error {

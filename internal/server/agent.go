@@ -14,9 +14,19 @@ import (
 
 // runAgent wires the node-side subscriptions and heartbeats.
 func (a *App) runAgent(ctx context.Context) error {
+	// Adopt the registry, if one was supplied directly, before serving.
+	if a.registryDoc != nil {
+		if err := a.adoptRegistry(a.registryDoc); err != nil {
+			return fmt.Errorf("server: adopt supplied registry: %w", err)
+		}
+	}
+
 	subject := bus.Subject(a.cfg.Bus.SubjectRoot, bus.KindTask, a.id.NodeID)
 	if _, err := a.bus.Subscribe(ctx, subject, a.onTask); err != nil {
 		return fmt.Errorf("server: subscribe task: %w", err)
+	}
+	if _, err := a.bus.Subscribe(ctx, a.subj(bus.KindRegistry), a.onRegistry); err != nil {
+		return fmt.Errorf("server: subscribe registry: %w", err)
 	}
 	a.log.Info("agent ready", "node", a.id.NodeID, "subject", subject, "ops", OperationNames())
 
@@ -39,6 +49,64 @@ func (a *App) runAgent(ctx context.Context) error {
 	return nil
 }
 
+// onRegistry adopts a Master-signed registry from the bus. It refuses a bad
+// signature, an unknown capability, or an older registry than the one already
+// adopted (rollback).
+func (a *App) onRegistry(_ context.Context, _ string, data []byte) error {
+	var doc apiv1.NodeRegistry
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("server: registry payload: %w", err)
+	}
+	if err := a.adoptRegistry(&doc); err != nil {
+		a.log.Warn("registry refused", "err", err)
+		return err
+	}
+	// Re-announce health so the control plane sees the new digest.
+	if err := a.PublishHealth(context.Background(), true); err != nil {
+		a.log.Warn("health re-publish failed", "err", err)
+	}
+	return nil
+}
+
+// adoptRegistry verifies a registry against the pinned master key and installs
+// it, enforcing the monotonic issue time. It is safe to call concurrently with
+// task handling.
+func (a *App) adoptRegistry(doc *apiv1.NodeRegistry) error {
+	if err := authz.VerifyRegistry(a.masterPub, doc); err != nil {
+		return err
+	}
+	a.regMu.Lock()
+	if a.registryDoc != nil && doc.IssuedAtUnix < a.registryDoc.IssuedAtUnix {
+		adopted := a.registryDoc.IssuedAtUnix
+		a.regMu.Unlock()
+		return fmt.Errorf("%w: incoming=%d adopted=%d", authz.ErrRegistryRollback, doc.IssuedAtUnix, adopted)
+	}
+	a.registryDoc = doc
+	a.nodeRegistry = authz.NewRegistry(doc)
+	a.regMu.Unlock()
+
+	digest, _ := authz.RegistryDigest(doc)
+	a.log.Info("registry adopted", "nodes", len(doc.Authorizations), "issued", doc.IssuedAtUnix, "digest", short(digest))
+
+	if !a.registryAllowsSelf() {
+		a.log.Error("this node is revoked or absent in the adopted registry; refusing to serve", "node", a.id.NodeID)
+	}
+	return nil
+}
+
+// registryAllowsSelf reports whether the adopted registry authorizes this node
+// for delegated compute. With no registry adopted it is permissive (legacy /
+// single-process mode).
+func (a *App) registryAllowsSelf() bool {
+	a.regMu.RLock()
+	reg := a.nodeRegistry
+	a.regMu.RUnlock()
+	if reg == nil {
+		return true
+	}
+	return reg.Authorized(a.id.NodeID, authz.CapClusterServe, time.Now()) == nil
+}
+
 // onTask verifies and executes a signed task, then publishes the attested
 // result. Every refusal path returns an error to the bus (a NAK), so a poison
 // message is retried or dead-lettered rather than silently dropped.
@@ -59,6 +127,13 @@ func (a *App) onTask(_ context.Context, _ string, data []byte) error {
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("task refused: node does not hold capability", "cap", authz.CapClusterServe)
 		return fmt.Errorf("server: node does not hold %s", authz.CapClusterServe)
+	}
+	// The registry is the ceiling: a locally held capability the registry never
+	// granted does not authorize the work.
+	if !a.registryAllowsSelf() {
+		a.counters.TasksRefused.Add(1)
+		a.log.Warn("task refused: not authorized by registry", "node", a.id.NodeID)
+		return fmt.Errorf("server: node %s not authorized by registry", a.id.NodeID)
 	}
 
 	result, err := Execute(env.Operation, env.ParamsJSON)

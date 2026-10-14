@@ -45,6 +45,43 @@ type RegisterNode struct {
 	RegistryDigest string      `json:"registry_digest,omitempty"`
 }
 
+// NodeAuthorization is one Master-signed entry in the node registry: which node
+// this is, what it may hold, and whether it is revoked.
+//
+// It mirrors the fabric's registry entry (contracts/identity-schema.json,
+// "grant"/registry section; see peer-node/manifests/node-authorizations.json).
+// The registry, not the node, is the authority: a peer cannot widen itself, and
+// `revoked` is inside the signed registry so only the Master can flip it.
+type NodeAuthorization struct {
+	NodeID        string   `json:"node_id"`
+	Fingerprint   string   `json:"fingerprint"`
+	PublicKeyB64  string   `json:"public_key_b64"`
+	OverlayIPv4   string   `json:"overlay_ipv4,omitempty"`
+	Capabilities  []string `json:"capabilities"`
+	IssuedAtUnix  int64    `json:"issued_at_unix"`
+	ExpiresAtUnix int64    `json:"expires_at_unix,omitempty"`
+	Revoked       bool     `json:"revoked"`
+}
+
+// NodeRegistry is the Master-signed set of node authorizations, distributed to
+// peers over the bus. It is fail-closed: an empty registry authorizes nobody.
+//
+// The whole document is signed by the Master operational key, so an attacker
+// with storage write access can neither widen an entry nor reinstate a revoked
+// one — both would need a fresh signature. IssuedAtUnix increases on every
+// re-sign, which lets a peer refuse a rolled-back (older) registry.
+type NodeRegistry struct {
+	SchemaVersion      string              `json:"schema_version"`
+	MasterPublicKeyB64 string              `json:"master_public_key_b64"`
+	IssuedAtUnix       int64               `json:"issued_at_unix"`
+	ExpiresAtUnix      int64               `json:"expires_at_unix,omitempty"`
+	Authorizations     []NodeAuthorization `json:"authorizations"`
+	SignatureB64       string              `json:"signature_b64,omitempty"`
+}
+
+// RegistrySchemaVersion is the only accepted registry schema version.
+const RegistrySchemaVersion = "1.0"
+
 // TaskEnvelope is a signed compute task (see compute.proto).
 type TaskEnvelope struct {
 	Fingerprint        string   `json:"fingerprint"`

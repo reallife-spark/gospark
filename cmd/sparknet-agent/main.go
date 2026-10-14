@@ -11,8 +11,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/config"
 	"github.com/reallife-spark/goSpark/internal/identity"
+	"github.com/reallife-spark/goSpark/internal/registryfile"
 	"github.com/reallife-spark/goSpark/internal/server"
 )
 
@@ -28,6 +30,7 @@ func run() error {
 	cfgPath := fs.String("config", "", "config file (YAML)")
 	keyFile := fs.String("key", "", "node identity key file")
 	masterPub := fs.String("master-pub", "", "control-plane public key (base64)")
+	registryFile := fs.String("registry", "", "Master-signed node registry file to adopt at startup (overrides config registry.file)")
 	transportListen := fs.String("transport-listen", "", "override transport listen address")
 	_ = fs.Parse(os.Args[1:])
 
@@ -52,11 +55,17 @@ func run() error {
 	cfg.Node.ID = id.NodeID
 	cfg.Node.OwnerID = id.OwnerID
 
+	regDoc, err := loadRegistryDoc(*registryFile, cfg.Registry.File)
+	if err != nil {
+		return err
+	}
+
 	app, err := server.New(server.Options{
 		Config:          cfg,
 		Identity:        id,
 		Role:            server.RoleAgent,
 		MasterPublic:    pub,
+		Registry:        regDoc,
 		TransportListen: *transportListen,
 	})
 	if err != nil {
@@ -66,4 +75,18 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return app.Run(ctx)
+}
+
+// loadRegistryDoc loads a signed registry the agent adopts at startup. The agent
+// verifies it against the pinned master key when adopting, so a stale or forged
+// file fails loudly rather than silently authorizing nobody.
+func loadRegistryDoc(flagPath, cfgPath string) (*apiv1.NodeRegistry, error) {
+	path := flagPath
+	if path == "" {
+		path = cfgPath
+	}
+	if path == "" {
+		return nil, nil
+	}
+	return registryfile.Load(path)
 }

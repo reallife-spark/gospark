@@ -27,6 +27,9 @@ bus:
   # queue: leave empty for a single control plane. Set the same value on HA
   # replicas so they load-balance tasks/results instead of double-processing.
   queue: ""
+  # max_deliver bounds JetStream redelivery of a failing message before it is
+  # dead-lettered (default 5). Stops a poison message spinning the node.
+  max_deliver: 5
 
 transport:
   # HTTP/3 (QUIC) data plane for NVFP4 KV blocks.
@@ -47,6 +50,12 @@ router:
   edge_token_ceiling: 2048
   cluster_token_floor: 32768
   max_nodes: 4
+
+registry:
+  # Node authorizations the control plane signs and serves. Point -registry (or
+  # this key) at a file produced by `sparknetctl registry sign`; the control
+  # plane re-signs it with its own key. Empty => open mode (not fail-closed).
+  file: ""
 
 log:
   level: info

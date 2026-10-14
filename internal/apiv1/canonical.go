@@ -79,6 +79,14 @@ func clearSignature(env any) (any, error) {
 		c := e
 		c.SignatureB64 = ""
 		return c, nil
+	case *NodeRegistry:
+		c := *e
+		c.SignatureB64 = ""
+		return c, nil
+	case NodeRegistry:
+		c := e
+		c.SignatureB64 = ""
+		return c, nil
 	default:
 		return nil, fmt.Errorf("canonical: unsupported envelope %T", env)
 	}

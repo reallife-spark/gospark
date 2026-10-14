@@ -29,6 +29,9 @@ bus:
   # resumes after a mesh drop. Set a shared value only for interchangeable
   # replicas of the same logical worker.
   queue: ""
+  # max_deliver bounds JetStream redelivery of a failing message before it is
+  # dead-lettered (default 5). Stops a poison message spinning the node.
+  max_deliver: 5
 
 transport:
   # HTTP/3 (QUIC) data plane for NVFP4 KV blocks. Use a port distinct from the
@@ -49,6 +52,11 @@ router:
   edge_token_ceiling: 2048
   cluster_token_floor: 32768
   max_nodes: 4
+
+registry:
+  # Master-signed registry this node adopts at startup and verifies against its
+  # pinned -master-pub. Empty => adopt from the bus, or run permissive if none.
+  file: ""
 
 log:
   level: info

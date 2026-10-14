@@ -15,11 +15,17 @@ import (
 // subjects use JetStream so a node that drops off the WireGuard mesh resumes
 // where it left off instead of losing work.
 type NATS struct {
-	nc    *nats.Conn
-	js    nats.JetStreamContext
-	name  string // connection name: the consumer identity
-	queue string // optional queue group: subscribers sharing it load-balance
+	nc         *nats.Conn
+	js         nats.JetStreamContext
+	name       string // connection name: the consumer identity
+	queue      string // optional queue group: subscribers sharing it load-balance
+	maxDeliver int    // cap on redeliveries for a failing message (0 => default)
 }
+
+// defaultMaxDeliver bounds redelivery of a permanently-failing message. Without
+// it JetStream retries a NAK forever, so a poison message (bad signature, reused
+// nonce) spins the node.
+const defaultMaxDeliver = 5
 
 // NATSOptions configures the connection.
 type NATSOptions struct {
@@ -33,6 +39,9 @@ type NATSOptions struct {
 	// replicas set the same Queue; independent observers leave it empty so each
 	// gets its own copy (fan-out).
 	Queue string
+	// MaxDeliver caps redeliveries of a failing message before JetStream stops
+	// (the message becomes dead-lettered). Zero uses defaultMaxDeliver.
+	MaxDeliver int
 }
 
 // consumerID is the identity under which JetStream consumers are named. With a
@@ -63,7 +72,10 @@ func Connect(opts NATSOptions) (*NATS, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bus: connect %s: %w", opts.URL, err)
 	}
-	n := &NATS{nc: nc, name: opts.Name, queue: opts.Queue}
+	n := &NATS{nc: nc, name: opts.Name, queue: opts.Queue, maxDeliver: opts.MaxDeliver}
+	if n.maxDeliver <= 0 {
+		n.maxDeliver = defaultMaxDeliver
+	}
 	if opts.Stream != "" {
 		js, err := nc.JetStream()
 		if err != nil {
@@ -146,9 +158,9 @@ func (n *NATS) Subscribe(_ context.Context, subject string, h Handler) (Subscrip
 			err error
 		)
 		if n.queue != "" {
-			sub, err = n.js.QueueSubscribe(subject, n.queue, wrapped, nats.Durable(durable), nats.ManualAck())
+			sub, err = n.js.QueueSubscribe(subject, n.queue, wrapped, nats.Durable(durable), nats.ManualAck(), nats.MaxDeliver(n.maxDeliver))
 		} else {
-			sub, err = n.js.Subscribe(subject, wrapped, nats.Durable(durable), nats.ManualAck())
+			sub, err = n.js.Subscribe(subject, wrapped, nats.Durable(durable), nats.ManualAck(), nats.MaxDeliver(n.maxDeliver))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("bus: js subscribe %s: %w", subject, err)
