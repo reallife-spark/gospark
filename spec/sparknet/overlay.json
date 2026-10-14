@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "contract": "overlay",
+  "description": "WireGuard overlay addressing. This file is the single source of truth for the overlay network. Both the Master and every peer read these values; neither role hard-codes them.",
+  "overlay_cidr": "10.100.0.0/24",
+  "master_anchor_ipv4": "10.100.0.1",
+  "peer_prefix": "10.100.0.",
+  "peer_host_range": [2, 254],
+  "reserved_peer_addresses": {
+    "10.100.0.1": "the Master Anchor — never assignable to a peer",
+    "10.100.0.255": "broadcast — never assignable to a peer"
+  },
+  "peer_mask": "/32",
+  "peer_allowed_ips_rule": "A peer's [Peer] AllowedIPs must cover exactly one address: 10.100.0.1/32 for the Master edge, or the peer's own single /32 on a Master-side stanza. Wider masks permit source-spoofing a sibling.",
+  "governance_mode": {
+    "purpose": "Decides who arbitrates a cross-node share. It is determined by the node count in the signed registry, never by local configuration, so a node cannot opt itself out of review.",
+    "determined_by": "count of non-revoked entries in the signed registry (manifests/node-authorizations.json)",
+    "modes": {
+      "solo": {
+        "node_count": 1,
+        "rule": "No cross-node share exists. Isolation means the node's own external data path only; the Master edge stays up so evidence and revocation remain reachable."
+      },
+      "peer_pair": {
+        "node_count": 2,
+        "rule": "Symmetric. No Master arbitration is available or required: the two members verify shared information against their existing knowledge base instead. The Master does not interpose on their share, and a Master outage does not interrupt it. One member may be the elected Master — its operational key governs authority-plane messages only (registry, approval, 10.100.0.1/32) and still does not arbitrate this pair's shares.",
+        "peer_pair_rationale": "Requiring a Master in a two-node mesh would give the Master a veto over data the Master cannot review on both sides, and would make the smallest useful deployment depend on a third party."
+      },
+      "master_governed": {
+        "node_count": 3,
+        "rule": "The Master arbitrates every cross-node share, including peer-to-peer ones. Ratification is required for a share to survive its window."
+      }
+    },
+    "re_evaluation": "The mode is recomputed from the registry on every share request, so a third node joining mid-share re-evaluates that share rather than grandfathering it under the rules it was created under. A share already created under peer_pair is not retroactively ratified by the arrival of a third node; it ends, and may be re-offered under the new mode.",
+    "authority_consequence": "governance_mode never widens the authority plane. In every mode the peer-to-Master AllowedIPs rule above is unchanged, and only the arbitration of shares changes."
+  },
+  "data_plane_stanza": {
+    "purpose": "Carry time-boxed peer-to-peer traffic that is deliberately outside the authority plane: cross-node conversation passing and share transport.",
+    "is_authority_plane": false,
+    "why_separate": "The authority plane is the path a node trusts to carry signed instructions, and its AllowedIPs rule admits exactly one address. Widening it to reach a sibling would let any sibling-present a source address the node believes is the Master, which is the exact confusion the single-address rule exists to prevent. Peer-to-peer traffic therefore rides a distinct construct whose trust basis is a share grant, not a key held by the peer itself.",
+    "trust_basis": "a signed, unexpired, unrevoked share grant naming the counterpart node's fingerprint — never the mere fact that a packet arrived from an overlay address.",
+    "time_boxed": true,
+    "constraints": [
+      "A data-plane stanza exists only for the lifetime of a share grant and is torn down when it expires, is revoked, hits its idle timeout, or its overlay address changes.",
+      "It grants no authority. A node reached over a data-plane stanza can be talked into nothing it could not also be talked into by its own operator.",
+      "It does not carry registry distribution, guard approval or any other authority-plane message. Those remain Master-only, 10.100.0.1/32.",
+      "Both endpoints record the stanza's open and close in the ledger, so an unlogged stanza is a detectable fault."
+    ],
+    "unverified_on_dev_host": [
+      "that a data-plane stanza can be torn down on idle timeout without disturbing the authority plane",
+      "that source-address spoofing across the data plane is actually refused"
+    ]
+  },
+  "persistent_keepalive": 25,
+  "mtu": 1400,
+  "mtu_rationale": "Keeps the tunnel clear of the 1500-byte path MTU when the same NIC also carries RoCEv2/TCP.",
+  "listen_port_default": 51820,
+  "config_mode": "0600",
+  "pinned_immutable": true,
+  "teardown": "Master-side revocation, or the node-local containment KillSwitch. Never a plain systemctl stop.",
+  "private_keys_in_vault": false,
+  "unverified_on_dev_host": [
+    "live handshake",
+    "PersistentKeepalive behaviour",
+    "chattr +i enforcement",
+    "nftables enforcement"
+  ]
+}

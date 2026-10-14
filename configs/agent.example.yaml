@@ -1,0 +1,47 @@
+# goSpark node-agent example configuration.
+#
+# An agent holds no control-plane authority: it verifies the control plane's
+# signed tasks, executes a closed operation whitelist, and returns an attested
+# result. Start it with:
+#
+#   sparknet-agent -config configs/agent.example.yaml \
+#     -key .state/node.key \
+#     -master-pub BASE64MASTERPUB
+
+node:
+  # id/owner_id are overwritten from the loaded key file.
+  id: node-a
+  owner_id: ""
+  key_file: .state/node.key
+  overlay_address: 10.44.0.2
+  # cluster-serve is required to accept delegated compute; it is sensitive.
+  capabilities:
+    - telemetry
+    - cluster-serve
+
+bus:
+  url: ""
+  subject_root: sparknet
+  stream: SPARKNET
+
+transport:
+  listen: 0.0.0.0:7443
+  chunk_size: 262144
+  timeout: 10s
+
+gateway:
+  listen: 127.0.0.1:8080
+  upstream: http://127.0.0.1:8000
+
+mesh:
+  interface: wg0
+  wg_config: /etc/wireguard/wg0.conf
+
+router:
+  edge_token_ceiling: 2048
+  cluster_token_floor: 32768
+  max_nodes: 4
+
+log:
+  level: info
+  format: text

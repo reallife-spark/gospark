@@ -1,0 +1,68 @@
+// Cluster job / result contract.
+//
+// Mirrors the sparknet cluster envelope spelled in
+// /mnt/knowledge/sparknet/CLUSTER_INFERENCE_DESIGN.md (`sparknet.cluster-job.v1`
+// and `sparknet.cluster-result.v1`) so a goSpark control plane and the Python
+// fabric describe the same object. The authority asymmetry is preserved: the
+// initiator/Master key *authorises*; the executor's node identity key *attests*.
+
+syntax = "proto3";
+
+package sparknet.v1;
+
+option go_package = "github.com/reallife-spark/goSpark/internal/apiv1";
+
+message ContextSpec {
+  string source = 1;                // e.g. "master_vector_db"
+  string query = 2;
+  uint32 top_k = 3;
+}
+
+message Budget {
+  uint32 max_nodes = 1;
+  uint32 max_rounds = 2;
+  uint32 tokens_per_node = 3;
+}
+
+message SubTask {
+  string node_id = 1;
+  string subtask_id = 2;
+  string instruction = 3;
+  repeated string context_refs = 4;
+}
+
+message ClusterJob {
+  string job_id = 1;
+  string conversation_id = 2;
+  string initiator_node_id = 3;
+  int64 created_at_unix = 4;
+  int64 expires_at_unix = 5;
+  string mode = 6;                  // decompose | shard | best_of_n | mixture
+  string prompt = 7;
+  string running_summary = 8;
+  ContextSpec context = 9;
+  Budget budget = 10;
+  repeated SubTask subtasks = 11;
+  string signature_b64 = 12;        // initiator node identity key
+  string ratification_b64 = 13;     // Master operational key, when required
+}
+
+message Citation {
+  string page = 1;
+  string node_id = 2;
+}
+
+message ClusterResult {
+  string job_id = 1;
+  string subtask_id = 2;
+  string node_id = 3;
+  string fingerprint = 4;
+  string answer = 5;
+  repeated Citation citations = 6;
+  double confidence = 7;
+  string model = 8;
+  uint32 tokens = 9;
+  int64 completed_at_unix = 10;
+  string result_digest = 11;        // sha256 of full answer when digest-only
+  string signature_b64 = 12;        // executor node identity key
+}

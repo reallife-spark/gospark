@@ -1,0 +1,241 @@
+{
+  "schema_version": "1.0",
+  "contract": "identity-schema",
+  "description": "How a node's identity becomes a fingerprint, and what the Master signs. Both roles must agree on this byte-for-byte or they will not validate each other. The reference implementation is shared/sparknet-authz.py; this file is the normative statement of the same rules.",
+  "identity_fields": [
+    "node_id",
+    "role",
+    "wireguard_public_key_b64",
+    "overlay_ipv4",
+    "requested_capabilities"
+  ],
+  "identity_fields_note": "Deliberately excludes hostname, vault path and timestamps: those change without changing identity, and including them would force a re-sign after a routine rename.",
+  "roles": [
+    "master",
+    "peer"
+  ],
+  "role_note": "'peer' is the working-node role. Both roles use the same identity schema; only the Master holds the signing key.",
+  "canonicalisation": {
+    "projection": "Keep only identity_fields, sorted by key.",
+    "serialisation": "JSON, sort_keys=true, separators=(',', ':'), UTF-8.",
+    "rationale": "The bytes must not depend on dict insertion order or Python formatting differences, or the same identity would fingerprint differently on the two nodes."
+  },
+  "fingerprint": {
+    "algorithm": "sha256",
+    "input": "canonical bytes of the projected identity",
+    "encoding": "hex",
+    "correction": "WireGuard has no SHA-256 in its protocol. SHA-256 here is the authorization fingerprint; Ed25519 is what signs it. Describing this as 'SHA-256 WireGuard authentication' is wrong."
+  },
+  "signed_envelope_fields": [
+    "fingerprint",
+    "identity",
+    "capabilities",
+    "overlay_ipv4",
+    "issued_at",
+    "expires_at",
+    "revoked"
+  ],
+  "signed_envelope_note": "Signing only the identity would leave capabilities and overlay_ipv4 mutable by anyone who can edit the registry file, escalating a node to guard-apply without the Master approving it. revoked is inside the envelope so only the Master can flip it.",
+  "registry": {
+    "path": "manifests/node-authorizations.json",
+    "author": "master",
+    "reader": "peer",
+    "distribution": "UNSPECIFIED \u2014 the channel by which a signed registry reaches peers is not yet built. Peers currently read a local copy.",
+    "empty_by_default": true,
+    "empty_by_default_rationale": "No node gets privileges by default. The shipped registry has no entries on purpose, so a fresh deployment is fail-closed."
+  },
+  "cluster_trust_root": {
+    "purpose": "Who is allowed to hold the signing key, agreed by the members themselves. This REPLACES the older single-key model, where one master_public_key_b64 named the sole authority and nothing had agreed to it.",
+    "canonicalised_by": "contracts/consensus-protocol.md",
+    "replaces": "master_public_key as the root of authority. That field survives as the operational public key a root binds, not as an authority in itself.",
+    "members": {
+      "min": 2,
+      "max": 3,
+      "min_is": "a pair \u2014 two members agreeing 2 of 2. The smallest cluster that can still refuse a self-elevation, because a single compromised node cannot install itself without the other's co-signature.",
+      "max_is": "the full cluster \u2014 three members agreeing 3 of 3.",
+      "boundary": "A fourth member changes the agreement threshold and needs its own protocol, so the count is a bounded range, not a free parameter."
+    },
+    "two_keys": {
+      "cluster_key": "per member; signs the trust root only; never signs a registry entry",
+      "operational_key": "held by the elected master only; signs registry entries and approvals",
+      "why_two": "A member present in the cluster must not thereby be able to sign anything. Splitting the keys means a cluster key leaked on its own cannot sign a registry entry, and an operational key leaked does not let a non-member forge a new root."
+    },
+    "fields": {
+      "version": {
+        "type": "string",
+        "purpose": "root schema version; \"1.2\" is current (chained supersession + admission epoch + reduced-membership removal proofs), \"1.1\" is the chained schema without epoch, \"1.0\" is the pre-chain schema; all three are still accepted for roots already in force",
+        "compatibility": "A 1.0 root signed the fields below WITHOUT previous_root_id; a 1.1 root signed them WITHOUT epoch. Each keeps verifying against its original bytes and id, because the canonical form is version-aware. A 1.1 root chains to a 1.0 parent by naming that parent's 1.0-computed root_id; a 1.2 root chains to a 1.1 parent by naming it and taking epoch 1 (the older parent is treated as height 0)."
+      },
+      "nonce": {
+        "type": "string",
+        "purpose": "unique per root, so a later root never verifies against an earlier one"
+      },
+      "formed_at": {
+        "type": "iso8601",
+        "purpose": "when agreement completed",
+        "clock": "injected"
+      },
+      "members": {
+        "type": "array",
+        "length": "2 or 3 (see members.min / members.max)",
+        "items": {
+          "node_id": "string",
+          "fingerprint": "hex \u2014 sha256 of the projected identity",
+          "wireguard_pubkey": "base64 \u2014 the overlay identity, the thing membership is really anchored to",
+          "cluster_pubkey": "base64 \u2014 signs this root only"
+        },
+        "self_describing": "The root carries its own membership, so a joining node reads members from the root rather than from configuration that could disagree with it."
+      },
+      "master_node_id": {
+        "type": "string",
+        "purpose": "which member is elected"
+      },
+      "master_pubkey": {
+        "type": "string",
+        "purpose": "the operational public key this root authorises; registry signatures are checked against it"
+      },
+      "previous_root_id": {
+        "type": "string",
+        "purpose": "root_id of the root this one supersedes; the empty string for a genesis root. Signed from schema 1.1; a 1.0 root has no such field and is treated as genesis on the trust path."
+      },
+      "epoch": {
+        "type": "integer",
+        "purpose": "the signed, clock-free height of the root in its lineage: 0 for a genesis root, exactly parent.epoch + 1 for a chained one. Signed from schema 1.2; a root older than 1.2 has no epoch and is treated as height 0, so a live 1.1 root can parent the first 1.2 re-formation. On the trust path verify_root refuses a 1.2+ root whose epoch is not the held root's plus one (unchained_root), so a stale root cannot be replayed as a fresh generation."
+      }
+    },
+    "acceptance_rules": [
+      "n valid signatures \u2014 exactly one per member",
+      "from n DISTINCT members \u2014 a member voting multiple times has voted once",
+      "each signature matching the cluster_pubkey of a member the root itself names",
+      "the registry being verified is signed under master_pubkey as this root names it",
+      "on the trust path (a root already held), the candidate names the held root as previous_root_id \u2014 supersession is a chain, not a free replacement (unchained_root otherwise)",
+      "on the trust path, a 1.2+ candidate's epoch is exactly the held root's epoch plus one (unchained_root otherwise)",
+      "on the trust path, a candidate whose membership is a strict subset of the held root's is refused unless its dropped set equals exactly the set its removal proofs evidence \u2014 one proof per dropped member, no proof for a member that stays (missing_removal_proof / unexpected_removal_proof otherwise)"
+    ],
+    "acceptance_rules_note": "The third and fourth rules are what stop a root from naming members while being signed by strangers, and from binding an operational key nothing ever recognised. Without them the first two rules are decorative.",
+    "unanimity": {
+      "threshold": "n of n \u2014 2 of 2 for a pair, 3 of 3 for the full cluster",
+      "chosen_over_majority_because": "an n\u22121-of-n majority lets one compromised node paired with another install a hostile master; with unanimity a single bad node can deny an election but can never win one",
+      "cost": "one offline node blocks the election indefinitely",
+      "cost_accepted_because": "the alternative quietly reintroduces the single point of compromise this protocol exists to remove",
+      "escape": "re-formation, which itself requires unanimity among the members it names"
+    },
+    "threshold_table": {
+      "replace_master": "n of n \u2014 changes who holds authority",
+      "revoke_node": "1 signature \u2014 a revoked node is inert either way, so revocation is a safe denial"
+    },
+    "threshold_table_note": "Unilateral revocation only removes reach. Unilateral replacement would hand the key to whoever committed the change. This is the same reasoning as capabilities.json's escalation_note.",
+    "not_threshold_crypto": "Ordinary Ed25519 signatures over identical canonical bytes, one per member. Unanimity protects WHO MAY HOLD the operational key, not each individual signature.",
+    "bootstrap": "There is no authority to bootstrap from: the registry ships empty. Members exchange WireGuard public keys out of band, then co-sign the first root. The first root is itself an n-of-n event.",
+    "reformation": {
+      "on_master_change": "policy B: the new root is CHAINED to the root in force via previous_root_id (one of the signed fields), with epoch one above the parent's. On the trust path verify_root refuses any candidate that does not name the held root as its predecessor (unchained_root), and verify_chain(roots) lets a peer that missed a re-formation verify the whole lineage newest-first down to a genesis root. The ledger remains the last line of defence: check_not_reverted is monotonic, adopting a root whose previous_root_id names the ledger's root in force without a flag and refusing anything else without --accept-requalification. News of a re-formation is PULLED along the existing share/registry path as successive chained roots, never broadcast by the superseded master. See consensus-protocol.md, Re-formation.",
+      "on_blocked_election": "policy B, adopted (schema 1.2, fabric PLAN.md Step 21): an unreachable member is dropped by forming a chained, strict-subset root whose members are exactly the survivors, each survivor co-signing. The drop is EVIDENCED by one removal proof per dropped member, carried alongside the root but not one of the signed fields. verify_root refuses a reduced root unless its dropped set equals exactly the set the proofs evidence (missing_removal_proof / unexpected_removal_proof otherwise). Two proof kinds: 'revocation' (signed by the parent root's elected Master with its operational key - the contract's existing one-signature revoke made durable) and 'attested' (signed by every surviving member with its cluster key). A lone survivor holds only the proof (a tombstone) and must re-witness a new member: the minimum of two is not relaxed. See consensus-protocol.md, Re-formation.",
+      "not_a_bypass": "re-formation cannot install a master without unanimity among the members it names; a node removed by re-formation cannot re-form its way back alone"
+    },
+    "cluster_key_use": "A cluster key signs only the root. Because every root needs all members to sign, one stolen cluster key cannot install a master on its own \u2014 it is one of the required signatures."
+  },
+  "master_public_key": {
+    "path": "manifests/keys/master-ed25519.pub.b64",
+    "format": "base64 of a 32-byte Ed25519 public key",
+    "tracked": false,
+    "tracked_rationale": "Corrected 2026-10-05. This said 'a public key is safe to track and must be, since peers need it to verify' \u2014 which was true of the single-key model this contract has since replaced. Under a trust root the authoritative public half travels inside the root, not as a standalone tracked file, so nothing under manifests/keys/ is authoritative any more. master-node/manifests/master-identity.json describes the role; $SPARKNET_STATE_DIR/trust-root.json carries the authority; and shared/sparknet-consensus.verify_root is what says whether either may be trusted.",
+    "shipped_value_status": "PLACEHOLDER, NOT A LIVE KEY \u2014 the shipped manifests/keys/master-ed25519.pub.b64 is a placeholder fixture whose private half was discarded, so it cannot sign and no peer should trust it. A real operational keypair is generated into $SPARKNET_STATE_DIR/keys at 0600 by `make keygen` and is never committed; its PUBLIC half becomes reachable to peers only by being named as master_pubkey in an elected cluster trust root. That is the entire publication path, and it is why no master public key is recorded in this contract: a key recorded here would be authority nobody voted for, which is the single-key model cluster_trust_root replaced.",
+    "published_to": "The elected cluster trust root's master_pubkey field. Not this file, and not any path under manifests/keys/ \u2014 a peer's trust in the signing key comes from the root it was handed, verified against three distinct members' signatures."
+  },
+  "master_private_key": {
+    "held_by": "master",
+    "path_never_committed": true,
+    "note": "Never leaves the Master. Its absence on a peer is the whole trust boundary; verify this with `make authz-verify`, which must pass using the public key alone."
+  },
+  "grant": {
+    "purpose": "A node authorization answers 'which node is this, and what may it hold permanently'. A grant answers 'which user, on which node, may reach which vault pages, until when'. They are separate because they are re-signed at very different rates \u2014 a node authorization changes on join or revoke, a grant changes every conversation \u2014 and a single signature per page would be unusable at conversational pace.",
+    "signed_by": "master (node authorizations), or the offline operator key under shared/sparknet-authz.py sign --master-key while the Master is unbuilt",
+    "verifier": "peer",
+    "verification_order": [
+      "signature verifies under the node's authorised signing key",
+      "fingerprint appears in the Master-signed registry, and is not revoked",
+      "capabilities are a subset of those the registry grants that node",
+      "expires_at is in the future; issued_at is not in the future beyond clock skew",
+      "nonce has not been seen before on this node",
+      "the peer presenting the grant is the peer named in it"
+    ],
+    "verification_order_note": "This is guard-protocol.md's check order unchanged. A second implementation of signature verification would be a second trust boundary to get wrong, so there is exactly one.",
+    "fields": {
+      "grant_id": {
+        "type": "string",
+        "purpose": "stable handle for this grant; the ledger and any share reference it"
+      },
+      "node_id": {
+        "type": "string",
+        "purpose": "which node the grant is valid on",
+        "matches_registry": true
+      },
+      "node_fingerprint": {
+        "type": "hex",
+        "purpose": "sha256 of the node's projected identity, so a grant cannot be replayed onto a re-keyed node"
+      },
+      "overlay_ipv4": {
+        "type": "string",
+        "purpose": "the address the presenting peer must hold; inside the envelope so it cannot be moved"
+      },
+      "capabilities": {
+        "type": "array",
+        "purpose": "subset of the node's registry capabilities",
+        "note": "A grant cannot widen a node. The registry is the ceiling."
+      },
+      "user_identity": {
+        "type": "string",
+        "purpose": "which human this grant belongs to; the ledger attributes access to them, not to the node"
+      },
+      "conversation_key": {
+        "type": "string",
+        "purpose": "binds the grant to one conversation, so a leaked grant does not outlive the session it was issued for",
+        "note": "Conversation passing uses a new grant for the receiving node rather than replaying the sender's."
+      },
+      "vault_scope": {
+        "type": "array",
+        "purpose": "the vault paths or page ids this grant may reach; empty means node-level config only, no knowledge access"
+      },
+      "issued_at": {
+        "type": "iso8601",
+        "purpose": "start of validity"
+      },
+      "expires_at": {
+        "type": "iso8601",
+        "purpose": "hard stop; enforced locally, never deferred to the issuer",
+        "local_enforcement": "A peer refuses an expired grant even if the issuer still considers it live. An unreachable issuer must not extend a grant."
+      },
+      "nonce": {
+        "type": "string",
+        "purpose": "single use; replay of a consumed grant is refused",
+        "retention": "the ledger must retain nonces for at least the longest grant lifetime, or a replay window opens silently"
+      },
+      "parent_grant_id": {
+        "type": "string|null",
+        "purpose": "the grant a subagent inherited, when this grant was delegated",
+        "delegation_note": "A subagent inherits its parent's grant unchanged \u2014 authority is not re-derived per child. Authority therefore traces to the parent grant, while the ledger separately records the acting child session id so audit traces to the child. Both are needed: the first says what was permitted, the second says who used it."
+      }
+    },
+    "inheritable": [
+      "capabilities",
+      "vault_scope",
+      "user_identity",
+      "node_id",
+      "node_fingerprint"
+    ],
+    "not_inheritable": [
+      "grant_id",
+      "nonce",
+      "conversation_key",
+      "expires_at",
+      "parent_grant_id"
+    ],
+    "not_inheritable_note": "A child's own grant is a distinct record with its own id, nonce, conversation binding and expiry. Inheriting those would let a child outlive its parent's window or reuse a consumed nonce.",
+    "signature": {
+      "algorithm": "ed25519",
+      "input": "canonical bytes of the projected grant, per canonicalisation above",
+      "note": "The same canonicalisation as a node authorization, so one implementation covers both. Adding a second projection rule would mean a grant could fingerprint differently on the two nodes that must agree about it."
+    },
+    "interim_signing": "While the Master is unbuilt, grants are signed by the operator holding the Master key offline and distributed by hand. That is weaker than an online issuer and is recorded as such, not presented as equivalent: there is no revocation channel, so revoke by removing the node from the registry and re-running make authz-verify."
+  }
+}

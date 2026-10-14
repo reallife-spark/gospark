@@ -1,0 +1,219 @@
+{
+ "schema_version": "2.0",
+ "contract": "ports",
+ "description": "Every port either role listens on or dials. Overlay-only ports are unreachable from the WAN by design.",
+ "measurement": {
+  "measured_on": "2026-10-05",
+  "method": "ss -ltnup, plus reading each named service's bind path",
+  "host": "single peer, aarch64, no WireGuard kernel interface available",
+  "caveat": "Runtime states are true of THIS host only. A port marked not-listening here may be running on a node with a live overlay. implementation_state is a property of the code and travels with the contract; runtime is a property of one machine and does not."
+ },
+ "states": {
+  "implementation_state": {
+   "implemented": "The code exists and binds the port it names.",
+   "provisioned": "Scaffolding or config exists, but nothing binds the port yet.",
+   "spec-only": "Designed and contracted, no code, by deliberate role boundary."
+  },
+  "runtime": {
+   "running": "A listener was observed on this host at measurement time.",
+   "not-listening": "No listener was observed on this host at measurement time.",
+   "not-verifiable-here": "Cannot be observed from this host, because the interface it needs does not exist here."
+  }
+ },
+ "ports": {
+  "51820": {
+   "service": "wireguard",
+   "protocol": "udp",
+   "bound_by": "both",
+   "overlay_only": false,
+   "note": "Carries the overlay itself. Reachable over the WAN because the Master must be dialled from behind NAT; peers behind NAT rely on PersistentKeepalive to keep the mapping open.",
+   "implementation_state": "implemented",
+   "runtime": "not-verifiable-here",
+   "runtime_why": "Render script, systemd unit, config template and tests all exist (peer-node/scripts/sparknet-wireguard-render.sh, peer-node/systemd/sparknet-wireguard-anchor.service). The interface never comes up on this host: no wg binary, so wg0 does not exist and there is nothing to observe."
+  },
+  "9090": {
+   "service": "guard",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": true,
+   "binds_to": "the peer's own overlay address only",
+   "note": "The guard binds 10.100.0.x, never 0.0.0.0. That is why a legitimate Master request arrives from 10.100.0.1 and off-overlay clients are rejected.",
+   "implementation_state": "implemented",
+   "runtime": "not-listening",
+   "runtime_why": "The daemon refuses to listen without an overlay address (peer-node/services/sparknet-guard-d.py:709-711, standalone mode). With wg0 absent it correctly declines to bind rather than falling back to a wildcard. This is the code working, not code missing \u2014 the distinction the previous boolean could not express."
+  },
+  "8090": {
+   "service": "master-instant-push",
+   "protocol": "tcp/http",
+   "bound_by": "master",
+   "overlay_only": true,
+   "binds_to": "10.100.0.1",
+   "note": "Master ACL changes POST here to force immediate routing adjustment on peers.",
+   "implementation_state": "spec-only",
+   "runtime": "not-listening",
+   "status": "SPEC ONLY \u2014 no listener exists by role boundary, not by omission. Tracked in master-node/plans/MASTER_BUILD_PLAN.md Step 7."
+  },
+  "4096": {
+   "service": "dispatch-bridge",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": false,
+   "note": "OpenAI-compatible local proxy routing to domain agent ports. The OpenAI/session/vault route class is local-only by design: it injects the user environment profile, so it stays loopback-only even when the bridge is bound to the overlay (`LOCAL_ONLY_PREFIXES`; an overlay source is refused `403 not-loopback` before the request is read). The `/admin/*` route is the exception: Master-signed, and from fabric Step 29 the one route class the overlay may reach.",
+   "implementation_state": "implemented",
+   "runtime": "not-listening",
+   "runtime_why": "The listener is `peer-node/services/sparknet-dispatch-bridge.py --serve` (bind: localhost, port 4096) serving the signed /v1/status endpoint over shared/sparknet-http.py. Requests are signed with the node's own key from .state/keys; unsigned or stale traffic is refused with a JSON 401. The bridge's bind path is asserted end to end by tests/test_http_transport.py against a real loopback socket, but no daemon holds 4096 open on the development host, and none should be \u2014 `implemented` + `not-listening` is the honest pair: the code exists and binds when invoked.",
+   "status": "IMPLEMENTED, NOT RUNNING HERE \u2014 `sparknet-dispatch-bridge.py --serve` is the listener (loopback 4096 default). Signed /v1/status proves the shared transport shared/sparknet-http.py; full OpenAI-compatible routing (Step 4) still tracked in peer-node/PLAN.md."
+  },
+  "4097": {
+   "service": "agent-engineering",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": false,
+   "implementation_state": "provisioned",
+   "runtime": "not-listening",
+   "status": "PROVISIONED, no listener. peer-node/agents/engineering/agent.py is a two-line placeholder that prints its identity. Tracked in peer-node/PLAN.md Step 4."
+  },
+  "4098": {
+   "service": "agent-cyber",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": false,
+   "implementation_state": "provisioned",
+   "runtime": "not-listening",
+   "status": "PROVISIONED, no listener. peer-node/agents/cyber/agent.py is a two-line placeholder that prints its identity. Tracked in peer-node/PLAN.md Step 4."
+  },
+  "4100": {
+   "service": "agent-vault-curator",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": false,
+   "implementation_state": "provisioned",
+   "runtime": "not-listening",
+   "status": "PROVISIONED, no listener. peer-node/agents/vault-curator/agent.py is a two-line placeholder that prints its identity. Tracked in peer-node/PLAN.md Step 5."
+  },
+  "4200": {
+   "service": "opencode-serve",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": false,
+   "note": "The single opencode server. Exactly one process serves every session on the node, which is what makes a session survive a UI restart and lets conversation passing reference a live session by id rather than by replayed transcript. Local-only: it carries the whole node's session authority.",
+   "implementation_state": "spec-only",
+   "runtime": "not-listening",
+   "status": "SPEC ONLY \u2014 no listener. Tracked in peer-node/PLAN.md Step 4."
+  },
+"4201": {
+    "service": "share-intake",
+    "protocol": "tcp/http",
+    "bound_by": "peer",
+    "overlay_only": true,
+    "binds_to": "the peer's own overlay address only",
+    "note": "Receives share offers and countersigned share grants from a sibling peer. It also carries the proposal-exchange message family (proposal.submit/review/decision, contracts/proposal-schema.json `transport`) \u2014 a route on this port, not a new port and not a share type, because a proposal conveys no knowledge read or copy. Overlay-only because every request here must arrive over the fabric, carrying a grant naming the sender's fingerprint.",
+    "transport_personality": "Peer personality only: the shared transport (shared/sparknet-http.py) classifies the caller by source address, and a loopback-only route class is refused 403 before the request is read. The share stanza has no local face; only a sibling on the overlay may dial it.",
+    "implementation_state": "implemented",
+    "runtime": "not-listening",
+    "runtime_why": "The engine is peer-node/services/sparknet-share-regime.py \u2014 a contract-driven, in-process share state machine that opens no sockets \u2014 and the proposal route is served by peer-node/services/sparknet-proposal-exchange.py, likewise in-process. Both bind no port by design and are exercised as an in-process node pair (peer-node/tests/test_share_regime.py, peer-node/tests/test_proposal_exchange.py), so `implemented` + `not-listening` is the honest pair: the code exists and routes when invoked, yet nothing holds 4201 open on this host.",
+    "status": "IMPLEMENTED, NOT RUNNING HERE \u2014 the share regime (peer-node/services/sparknet-share-regime.py) drives the share conversation and recognises the proposal message family; peer-node/services/sparknet-proposal-exchange.py serves that route. Neither opens a socket: the listeners are the deployment's concern and the overlay leg is `DoD: confirm: user`. Share lifecycle tracked in peer-node/PLAN.md Step 8; the proposal route in Step 36."
+   },
+  "4202": {
+   "service": "session-transfer",
+   "protocol": "tcp/http",
+   "bound_by": "peer",
+   "overlay_only": true,
+   "binds_to": "the peer's own overlay address only",
+   "note": "Carries a handoff payload. Separate from share-intake so that granting conversation passing does not implicitly grant knowledge sharing: two ports, two independent grants. The proposal-exchange family is reachable on either share port (contracts/proposal-schema.json `transport.ports`), since a proposal is not a share type and is not gated by the knowledge/conversation split.",
+   "implementation_state": "implemented",
+   "runtime": "not-listening",
+   "runtime_why": "Peer-node/services/sparknet-proposal-exchange.py serves the proposal route in-process and opens no socket; the session-transfer lifecycle engine is peer-node/services/sparknet-share-regime.py, also in-process. The pair is driven as two nodes in peer-node/tests/test_proposal_exchange.py, so the honest pair is `implemented` + `not-listening`: the code exists and routes when invoked, yet nothing holds 4202 open here.",
+   "status": "IMPLEMENTED, NOT RUNNING HERE \u2014 peer-node/services/sparknet-proposal-exchange.py carries the proposal round trip on this port; the handoff lifecycle is peer-node/services/sparknet-share-regime.py. No daemon binds 4202; the overlay leg is `DoD: confirm: user`. Tracked in peer-node/PLAN.md Step 6 (handoff) and Step 36 (proposal route)."
+  },
+  "4203": {
+   "service": "share-ratification",
+   "protocol": "tcp/http",
+   "bound_by": "master",
+   "overlay_only": true,
+   "binds_to": "10.100.0.1",
+   "note": "The Master ratifies or refuses a share. This is the 2 h clock's authority side. Peers enforce the deadline themselves, so an unreachable Master causes shares to expire, never to hang.",
+   "implementation_state": "spec-only",
+   "runtime": "not-listening",
+   "status": "SPEC ONLY \u2014 no listener, by the same role boundary that keeps the rest of the Master unbuilt. Tracked in master-node/plans/MASTER_BUILD_PLAN.md Step 10."
+  },
+"4210": {
+    "service": "cluster-election",
+    "protocol": "tcp/http",
+    "bound_by": "both",
+    "overlay_only": true,
+    "note": "Vote exchange for a master election. Carries signed votes only \u2014 never a registry entry and never an approval, so it is not an authority-plane message even though it decides who holds the operational key. Distinct from 4203 share-ratification so that electing a master and confirming a share stay separately gated.",
+    "implementation_state": "implemented",
+    "runtime": "not-listening",
+    "runtime_why": "The listener is `shared/sparknet-election.py serve` (loopback 127.0.0.1 by default, overlay address by deployment) and its bind path is asserted end to end by tests/test_election.py against a real loopback socket, but the exchange is only run on demand during a ceremony \u2014 there is no daemon holding 4210 open on the development host, and none should be. `implemented` + `not-listening` is the honest pair: the code exists and binds when invoked, yet nothing sits on the port.",
+    "status": "IMPLEMENTED, NOT RUNNING HERE \u2014 `shared/sparknet-election.py serve` is the listener (bind path: that command; loopback 127.0.0.1 by default, overlay address by deployment). Contract shapes in contracts/consensus-protocol.md, Exchange section. Run during a ceremony and stopped afterwards; nothing on the development host holds it open."
+   },
+"8080": {
+    "service": "admin-surface",
+    "protocol": "tcp/http",
+    "bound_by": "master",
+    "overlay_only": true,
+    "binds_to": "10.100.0.1",
+    "note": "The Master's administrative page: Open WebUI plus an opencode terminal into this role's vault and plan. Reachable only from inside the overlay. This is the surface most worth attacking and the one with the most to lose, so it binds the overlay address and never a wildcard.",
+    "admin_plane_not_authority_plane": "Carries no signed authority message. A grant or approval originates at 4203/4210 and is signed in the isolated signer process, never here \u2014 which is why this port can be reachable by an LLM-driven multi-user surface at all.",
+    "implementation_state": "provisioned",
+    "runtime": "not-verifiable-here",
+    "runtime_why": "Committed declarative config exists (master-node/configs/admin-surface/docker-compose.admin.yml, master-node/configs/admin-surface/opencode.json) and the declared topology is asserted by master-node/tests/test_admin_surface.py, but Open WebUI is not installed on this host and no overlay interface exists, so nothing binds 8080. `provisioned` rather than `implemented`: config without a listener.",
+    "status": "PROVISIONED, NOT DEPLOYED \u2014 reachability is DoD: confirm: user in master-node/plans/MASTER_BUILD_PLAN.md Step 18. Tracked as a declared surface, not a running one."
+   },
+   "4220": {
+    "service": "git-repo",
+    "protocol": "tcp/ssh+http",
+    "bound_by": "master",
+    "overlay_only": true,
+    "binds_to": "10.100.0.1",
+    "note": "The fabric git server: authorized nodes clone, push and fetch the shared repository through the Master. The Master administers it \u2014 creates the repository, manages the authorized-key allowlist and activates the service.",
+    "implementation_state": "spec-only",
+    "runtime": "not-listening",
+    "status": "SPEC ONLY \u2014 no code and no daemon by design. Role responsibility contracted in master-node/docs/master-control-plane.md and scoped in master-node/plans/MASTER_ADMIN_PLAN.md."
+   },
+   "4221": {
+    "service": "file-share",
+    "protocol": "tcp/http",
+    "bound_by": "master",
+    "overlay_only": true,
+    "binds_to": "10.100.0.1",
+    "note": "The fabric file sharing service: the Master hosts shared volumes that peers mount or fetch over the overlay. Separate from the per-peer 4201 share-intake grants because this is the infrastructure share, not a knowledge handoff between two peers.",
+    "implementation_state": "spec-only",
+    "runtime": "not-listening",
+    "status": "SPEC ONLY \u2014 no code and no daemon by design. Role responsibility contracted in master-node/docs/master-control-plane.md and scoped in master-node/plans/MASTER_ADMIN_PLAN.md."
+   },
+   "4222": {
+    "service": "nat-gateway",
+    "protocol": "tcp/http+udp",
+    "bound_by": "master",
+    "overlay_only": true,
+    "binds_to": "10.100.0.1",
+    "note": "The Master's NAT administration surface for the overlay: peers behind NAT rely on the Master to keep mappings and routes coherent, complementing PersistentKeepalive on 51820. Listed as a control port; the NAT itself is data-plane behaviour, not a listener.",
+    "implementation_state": "spec-only",
+    "runtime": "not-listening",
+    "status": "SPEC ONLY \u2014 no code and no daemon by design. Role responsibility contracted in master-node/docs/master-control-plane.md and scoped in master-node/plans/MASTER_ADMIN_PLAN.md."
+   },
+   "4223": {
+    "service": "vector-embed",
+    "protocol": "tcp/http",
+    "bound_by": "master",
+    "overlay_only": true,
+    "binds_to": "10.100.0.1",
+    "note": "The fabric vector embeddings database: a single store the roles and their wiki skills use for semantic retrieval, administered by the Master. Overlay-only because the index is cluster knowledge, not a public corpus.",
+    "implementation_state": "spec-only",
+    "runtime": "not-listening",
+    "status": "SPEC ONLY \u2014 no code and no daemon by design. Role responsibility contracted in master-node/docs/master-control-plane.md and scoped in master-node/plans/MASTER_ADMIN_PLAN.md."
+   }
+  },
+"invariants": [
+   "No role binds a wildcard address for an overlay-only port.",
+   "Peer-side listeners that inject local identity or accept mutations stay off the overlay.",
+   "The Master binds 9090 nowhere; it dials peers on 9090.",
+   "implementation_state never claims implemented without a bind path in the named service.",
+   "A port may be implemented and simultaneously not-listening. That combination is the normal case for an overlay service on a host whose overlay is down, and it must not be collapsed into a single boolean.",
+   "runtime is measured per host and never published as a contract fact; only implementation_state travels.",
+   "A service built on the shared transport (shared/sparknet-http.py) may declare a route class loopback-only via serve(loopback_only_routes=...). A caller from the overlay is then refused HTTP 403 before the request is read \u2014 a signed and authorized peer included. Overlay-only ports must never expose such a route class to the fabric.",
+   "Re-formation news uses no new port: the chained lineage is pulled over the existing share/registry path (4220 git-repo or 4201 share-intake), the same channel the receiving peer already grants. Adding a port would hand re-formation a transport edge no other authority has."
+  ]
+}

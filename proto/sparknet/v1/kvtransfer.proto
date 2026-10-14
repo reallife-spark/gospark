@@ -1,0 +1,44 @@
+// NVFP4 KV-cache transfer contract (data plane).
+//
+// The data plane is deliberately separate from the control plane. It carries
+// NVFP4-compressed KV-cache blocks over HTTP/3 (QUIC) so that a dropped packet
+// on one block stream cannot head-of-line-block adjacent streams.
+//
+// NVFP4 layout: E2M1 4-bit values packed two-per-byte, a per-16-element block
+// scale, and a tensor-level global scale. See internal/kvtransfer for the
+// reference codec. Transport is defined in internal/transport.
+
+syntax = "proto3";
+
+package sparknet.v1;
+
+option go_package = "github.com/reallife-spark/goSpark/internal/apiv1";
+
+// BlockHeader is sent at the head of every streamed KV block.
+message BlockHeader {
+  string block_id = 1;
+  string origin_node_id = 2;
+  string digest = 3;                // sha256 hex over the packed payload
+  uint32 num_elements = 4;
+  uint32 num_blocks = 5;            // ceil(num_elements / 16)
+  float global_scale = 6;           // FP32 tensor-level scale
+  string dtype = 7;                 // "nvfp4-e2m1"
+  int64 created_at_unix = 8;
+}
+
+// BlockChunk is one slice of the packed payload so a large block streams in
+// bounded chunks instead of a single multi-gigabyte message.
+message BlockChunk {
+  string block_id = 1;
+  uint32 seq = 2;
+  bool last = 3;
+  bytes data = 4;
+}
+
+// SemanticDelta is used for delta sync: the sender advertises the mirrored
+// hashes it holds so only the blocks the peer lacks are transferred.
+message SemanticDelta {
+  string namespace = 1;
+  repeated string have_digests = 2;
+  repeated string want_digests = 3;
+}

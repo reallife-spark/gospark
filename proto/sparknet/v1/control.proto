@@ -1,0 +1,53 @@
+// SparkNet control-plane contract (goSpark).
+//
+// The control plane carries *no tensor data*. It routes signed envelopes,
+// node health and escalation decisions between the Go control/service plane
+// and the Python/CUDA compute plane. See docs/architecture.md.
+//
+// These messages mirror the hand-written Go types in internal/apiv1, which are
+// the ones currently compiled. Code generation (protoc + protoc-gen-go) is a
+// deliberate follow-up, tracked in docs/adr/0001-go-control-plane.md.
+
+syntax = "proto3";
+
+package sparknet.v1;
+
+option go_package = "github.com/reallife-spark/goSpark/internal/apiv1";
+
+// NodeHealth is reported by every agent to the control plane. It is telemetry,
+// never an authority message.
+message NodeHealth {
+  string node_id = 1;
+  string fingerprint = 2;          // sha256 hex of the canonical node identity
+  string overlay_address = 3;      // e.g. 10.100.0.7
+  string wireguard_pubkey = 4;
+  repeated string capabilities = 5; // capabilities currently held (granted)
+  uint32 load_permille = 6;         // 0..1000, coarse load signal
+  uint64 kv_cache_bytes = 7;
+  bool serving = 8;                 // compute plane reachable
+  int64 reported_at_unix = 9;
+}
+
+// EscalationDecision is emitted by the router. It is advisory to the caller and
+// never blocks: the caller may proceed on the edge while the control plane
+// schedules a DGX/cluster job out of band.
+message EscalationDecision {
+  enum Target {
+    TARGET_UNSPECIFIED = 0;
+    TARGET_EDGE = 1;                // resolve locally
+    TARGET_DGX = 2;                 // single remote DGX Spark/teacher
+    TARGET_CLUSTER = 3;             // fan out via a cluster job
+  }
+  Target target = 1;
+  string reason = 2;
+  uint32 estimated_prompt_tokens = 3;
+  bool async_required = 4;          // always true across a WAN boundary
+}
+
+// RegisterNode is the agent -> control handshake. The registry snapshot itself
+// is signed by the Master operational key in the Python fabric; goSpark only
+// consumes it. See contracts/identity-schema.json in the sparknet repo.
+message RegisterNode {
+  NodeHealth health = 1;
+  string registry_digest = 2;       // sha256 of the adopted signed registry
+}

@@ -1,0 +1,49 @@
+# goSpark control-plane example configuration.
+#
+# The control plane IS the fabric master role: it holds the operational signing
+# key and dispatches signed tasks. Start it with:
+#
+#   sparknet-control -config configs/control.example.yaml \
+#     -master-key .state/control.key \
+#     -executors node-a=BASE64PUB,node-b=BASE64PUB
+
+node:
+  # id/owner_id are overwritten from the loaded key file.
+  id: control
+  owner_id: ""
+  key_file: .state/control.key
+  overlay_address: 10.44.0.1
+  capabilities:
+    - telemetry
+    - cluster-dispatch
+
+bus:
+  # Empty url => in-memory bus (single process / tests). For a real deployment
+  # set a NATS/JetStream URL, e.g. nats://10.44.0.1:4222.
+  url: ""
+  subject_root: sparknet
+  stream: SPARKNET
+
+transport:
+  # HTTP/3 (QUIC) data plane for NVFP4 KV blocks.
+  listen: 0.0.0.0:7443
+  chunk_size: 262144
+  timeout: 10s
+
+gateway:
+  # The Go API gateway in front of the local compute plane.
+  listen: 127.0.0.1:8080
+  upstream: http://127.0.0.1:8000
+
+mesh:
+  interface: wg0
+  wg_config: /etc/wireguard/wg0.conf
+
+router:
+  edge_token_ceiling: 2048
+  cluster_token_floor: 32768
+  max_nodes: 4
+
+log:
+  level: info
+  format: json

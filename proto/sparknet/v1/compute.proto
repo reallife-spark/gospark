@@ -1,0 +1,36 @@
+// Compute task / result contract.
+//
+// Mirrors /mnt/knowledge/sparknet/COMPUTE_CAPABILITY_DESIGN.md: the Master's
+// operational key authorises a task, the executor's node identity key attests
+// the result. `params` are *inside* the signature (content_in_signature = true)
+// so a task id cannot be replayed against different inputs.
+
+syntax = "proto3";
+
+package sparknet.v1;
+
+option go_package = "github.com/reallife-spark/goSpark/internal/apiv1";
+
+message TaskEnvelope {
+  string fingerprint = 1;           // sha256 of executor canonical identity
+  repeated string capabilities = 2; // must include the gating capability
+  string task_id = 3;
+  string operation = 4;             // closed whitelist, e.g. "arith" | "digest"
+  string params_json = 5;           // operation parameters, canonical JSON
+  bool content_in_signature = 6;    // always true in v1
+  string nonce = 7;                 // single use
+  int64 issued_at_unix = 8;
+  int64 expires_at_unix = 9;
+  string signature_b64 = 10;        // Master operational key (Ed25519)
+}
+
+message ResultEnvelope {
+  string task_id = 1;
+  string node_id = 2;
+  string fingerprint = 3;
+  string operation = 4;
+  string result = 5;                // bounded scalar answer, may be empty
+  string result_digest = 6;         // sha256 of full output when digest-only
+  int64 completed_at_unix = 7;
+  string signature_b64 = 8;         // executor node identity key (Ed25519)
+}

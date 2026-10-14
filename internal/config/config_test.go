@@ -1,0 +1,102 @@
+package config_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/reallife-spark/goSpark/internal/config"
+)
+
+func TestDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Bus.SubjectRoot != "sparknet" {
+		t.Errorf("subject_root = %q", cfg.Bus.SubjectRoot)
+	}
+	if cfg.Router.EdgeTokenCeiling != 2048 {
+		t.Errorf("edge ceiling = %d", cfg.Router.EdgeTokenCeiling)
+	}
+	if cfg.Transport.ChunkSize != 256*1024 {
+		t.Errorf("chunk size = %d", cfg.Transport.ChunkSize)
+	}
+}
+
+func TestValidateRejectsBadFloor(t *testing.T) {
+	cfg := config.Default()
+	cfg.Router.ClusterTokenFloor = cfg.Router.EdgeTokenCeiling - 1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when cluster floor < edge ceiling")
+	}
+}
+
+func TestValidateRejectsBadLogLevel(t *testing.T) {
+	cfg := config.Default()
+	cfg.Log.Level = "verbose"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for unknown log level")
+	}
+}
+
+func TestValidateRejectsZeroChunk(t *testing.T) {
+	cfg := config.Default()
+	cfg.Transport.ChunkSize = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for zero chunk size")
+	}
+}
+
+func TestLoadYAMLOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cfg.yaml")
+	body := "router:\n  edge_token_ceiling: 512\n  cluster_token_floor: 4096\n  max_nodes: 2\nlog:\n  level: debug\n  format: json\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Router.EdgeTokenCeiling != 512 || cfg.Router.MaxNodes != 2 {
+		t.Fatalf("yaml not applied: %+v", cfg.Router)
+	}
+	if cfg.Log.Level != "debug" || cfg.Log.Format != "json" {
+		t.Fatalf("log yaml not applied: %+v", cfg.Log)
+	}
+	// Defaults survive for keys the file omitted.
+	if cfg.Bus.SubjectRoot != "sparknet" {
+		t.Fatalf("default lost: %q", cfg.Bus.SubjectRoot)
+	}
+}
+
+func TestEnvOverrides(t *testing.T) {
+	t.Setenv("GOSPARK_NODE_ID", "node-env")
+	t.Setenv("GOSPARK_BUS_URL", "nats://example:4222")
+	t.Setenv("GOSPARK_LOG_LEVEL", "warn")
+	t.Setenv("GOSPARK_EDGE_TOKEN_CEILING", "777")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Node.ID != "node-env" {
+		t.Errorf("node id = %q", cfg.Node.ID)
+	}
+	if cfg.Bus.URL != "nats://example:4222" {
+		t.Errorf("bus url = %q", cfg.Bus.URL)
+	}
+	if cfg.Log.Level != "warn" {
+		t.Errorf("log level = %q", cfg.Log.Level)
+	}
+	if cfg.Router.EdgeTokenCeiling != 777 {
+		t.Errorf("edge ceiling = %d", cfg.Router.EdgeTokenCeiling)
+	}
+}
+
+func TestLoadMissingFileFails(t *testing.T) {
+	if _, err := config.Load(filepath.Join(t.TempDir(), "nope.yaml")); err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}

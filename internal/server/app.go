@@ -1,0 +1,225 @@
+// Package server assembles the goSpark control plane and node agent from the
+// lower-level packages, and is the only place that knows about all of them.
+package server
+
+import (
+	"context"
+	"crypto/ed25519"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/reallife-spark/goSpark/internal/apiv1"
+	"github.com/reallife-spark/goSpark/internal/authz"
+	"github.com/reallife-spark/goSpark/internal/bus"
+	"github.com/reallife-spark/goSpark/internal/config"
+	"github.com/reallife-spark/goSpark/internal/gateway"
+	"github.com/reallife-spark/goSpark/internal/identity"
+	"github.com/reallife-spark/goSpark/internal/kvtransfer"
+	"github.com/reallife-spark/goSpark/internal/router"
+	"github.com/reallife-spark/goSpark/internal/telemetry"
+	"github.com/reallife-spark/goSpark/internal/transport"
+)
+
+// Role selects what a process runs.
+type Role string
+
+const (
+	RoleControl Role = "control"
+	RoleAgent   Role = "agent"
+)
+
+// Options configures an App.
+type Options struct {
+	Config   config.Config
+	Identity *identity.Identity
+	Role     Role
+
+	// MasterPublic is the operational public key whose signed tasks this agent
+	// accepts. Required for RoleAgent.
+	MasterPublic ed25519.PublicKey
+	// ExecutorPublic is the node identity key whose results the control plane
+	// accepts. Required for RoleControl when results are expected.
+	ExecutorPublic map[string]ed25519.PublicKey // node_id -> public key
+
+	// TransportListen overrides the config transport listen address (use ":0"
+	// in tests).
+	TransportListen string
+
+	// Bus, when set, is used instead of dialling from config. It lets two Apps
+	// share one bus in-process, which is what an end-to-end test needs.
+	Bus bus.Bus
+}
+
+// App is a running control plane or agent.
+type App struct {
+	cfg       config.Config
+	id        *identity.Identity
+	role      Role
+	log       *slog.Logger
+	bus       bus.Bus
+	router    *router.Router
+	cache     *kvtransfer.DeltaCache
+	counters  *telemetry.Counters
+	gw        *gateway.Gateway
+	transport *transport.Server
+
+	verifier     *authz.Verifier
+	masterPub    ed25519.PublicKey
+	executorPubs map[string]ed25519.PublicKey
+
+	registry *Registry
+
+	transportAddr string
+	addrMu        sync.Mutex
+	boundAddr     string
+	injectedBus   bus.Bus
+	ownsBus       bool
+}
+
+// New builds an App from options.
+func New(opts Options) (*App, error) {
+	if opts.Identity == nil {
+		return nil, errors.New("server: identity is required")
+	}
+	if opts.Role == "" {
+		opts.Role = RoleAgent
+	}
+	logger := telemetry.Logger(opts.Config.Log.Level, opts.Config.Log.Format)
+	a := &App{
+		cfg:  opts.Config,
+		id:   opts.Identity,
+		role: opts.Role,
+		log:  logger,
+		router: router.New(router.Config{
+			EdgeTokenCeiling:  opts.Config.Router.EdgeTokenCeiling,
+			ClusterTokenFloor: opts.Config.Router.ClusterTokenFloor,
+			MaxNodes:          opts.Config.Router.MaxNodes,
+		}),
+		cache:         kvtransfer.NewDeltaCache(),
+		counters:      &telemetry.Counters{},
+		masterPub:     opts.MasterPublic,
+		executorPubs:  opts.ExecutorPublic,
+		transportAddr: opts.Config.Transport.Listen,
+		injectedBus:   opts.Bus,
+		ownsBus:       opts.Bus == nil,
+	}
+	if opts.TransportListen != "" {
+		a.transportAddr = opts.TransportListen
+	}
+	a.gw = gateway.New(opts.Config.Gateway.Upstream, a.router)
+	a.gw.LocalCaps = opts.Config.Node.Capabilities
+
+	if opts.Role == RoleAgent && len(opts.MasterPublic) == 0 {
+		return nil, errors.New("server: agent requires MasterPublic")
+	}
+	return a, nil
+}
+
+// Run starts the app and blocks until ctx is cancelled.
+func (a *App) Run(ctx context.Context) error {
+	var err error
+	a.bus, err = a.dialBus()
+	if err != nil {
+		return err
+	}
+	if a.ownsBus {
+		defer a.bus.Close()
+	}
+
+	a.verifier = &authz.Verifier{
+		Nonces: authz.NewMemoryNonceStore(nil, time.Hour),
+	}
+
+	// The data plane (KV block intake) runs for both roles.
+	ready := make(chan net.Addr, 1)
+	a.transport = &transport.Server{
+		Addr:      a.transportAddr,
+		ChunkSize: a.cfg.Transport.ChunkSize,
+		Ready:     ready,
+		Handler: func(_ context.Context, h apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
+			digest := a.cache.Put(h.BlockID, b)
+			a.counters.BlocksReceived.Add(1)
+			a.counters.BytesStreamed.Add(uint64(len(b.Packed)))
+			a.log.Debug("block received", "block_id", h.BlockID, "origin", h.OriginNodeID, "digest", digest)
+			return digest, nil
+		},
+	}
+	go func() {
+		if err := a.transport.ListenAndServe(ctx); err != nil {
+			a.log.Error("transport server stopped", "err", err)
+		}
+	}()
+	go func() {
+		select {
+		case addr := <-ready:
+			a.addrMu.Lock()
+			a.boundAddr = addr.String()
+			a.addrMu.Unlock()
+			a.log.Info("data plane listening", "addr", addr.String())
+		case <-ctx.Done():
+		}
+	}()
+
+	// Gateway.
+	gwSrv := &http.Server{Addr: a.cfg.Gateway.Listen, Handler: a.gw.Handler()}
+	go func() {
+		a.log.Info("gateway listening", "addr", a.cfg.Gateway.Listen)
+		if err := gwSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			a.log.Error("gateway stopped", "err", err)
+		}
+	}()
+
+	switch a.role {
+	case RoleControl:
+		if err := a.runControl(ctx); err != nil {
+			return err
+		}
+	case RoleAgent:
+		if err := a.runAgent(ctx); err != nil {
+			return err
+		}
+	}
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = gwSrv.Shutdown(shutdownCtx)
+	return nil
+}
+
+func (a *App) dialBus() (bus.Bus, error) {
+	if a.injectedBus != nil {
+		a.log.Info("bus: injected")
+		return a.injectedBus, nil
+	}
+	if a.cfg.Bus.URL == "" {
+		a.log.Info("bus: in-memory (no URL configured)")
+		return bus.NewMemory(), nil
+	}
+	n, err := bus.Connect(bus.NATSOptions{
+		URL:      a.cfg.Bus.URL,
+		Name:     "gospark-" + string(a.role) + "-" + a.id.NodeID,
+		Stream:   a.cfg.Bus.Stream,
+		Subjects: []string{a.cfg.Bus.SubjectRoot + ".>"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.log.Info("bus: connected", "url", a.cfg.Bus.URL)
+	return n, nil
+}
+
+// LocalAddr reports the bound transport address (the real port when the config
+// used ":0", otherwise the configured address). Empty until the listener is up.
+func (a *App) LocalAddr() string {
+	a.addrMu.Lock()
+	defer a.addrMu.Unlock()
+	if a.boundAddr != "" {
+		return a.boundAddr
+	}
+	return a.transportAddr
+}

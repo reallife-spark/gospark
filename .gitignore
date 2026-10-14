@@ -1,0 +1,16 @@
+# Build output
+/bin/
+
+# Local state: keys, registry snapshots, delta caches.
+/.state/
+*.key
+*.pem
+
+# Test / coverage artefacts
+*.out
+coverage.txt
+
+# Editor
+.idea/
+.vscode/
+*.swp

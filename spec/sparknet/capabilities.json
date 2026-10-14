@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "contract": "capabilities",
+  "description": "The complete, closed capability vocabulary. The Master grants these by signing; a peer holds only what the Master signed. Anything not listed here is rejected by both roles. Adding a capability is a contract change and must land here first.",
+  "known_capabilities": [
+    "telemetry",
+    "p2p-sync",
+    "push-receive",
+    "guard-apply",
+    "cluster-vote",
+    "cluster-dispatch",
+    "cluster-serve",
+    "admin-supervise"
+  ],
+  "definitions": {
+    "telemetry": {
+      "grants": "Push metrics and node status to the Master.",
+      "holder": "peer",
+      "sensitive": false
+    },
+    "p2p-sync": {
+      "grants": "Accept and serve user-space vault sync from other nodes over the overlay.",
+      "holder": "peer",
+      "sensitive": false
+    },
+    "push-receive": {
+      "grants": "Accept pushed artifacts from the Master or a sibling peer.",
+      "holder": "peer",
+      "sensitive": false
+    },
+    "guard-apply": {
+      "grants": "Apply Master-approved changes to protected files on this node: lift chattr +i, write, re-pin.",
+      "holder": "peer",
+      "sensitive": true,
+      "note": "The sensitive one. Without it the guard verifies and audits but refuses to apply, regardless of how valid the signature is. This is the capability that turns a signed request into a filesystem mutation, so the Master must grant it deliberately and per node."
+    },
+    "cluster-vote": {
+      "grants": "Cast one signed vote in a master election.",
+      "holder": "peer",
+      "sensitive": false,
+      "note": "Every member holds this, because election is what makes a master at all. It is deliberately weak: a vote is deduplicated by member identity, so casting three votes for yourself is still one vote. It confers nothing \u2014 it is a say, not a grant. See contracts/consensus-protocol.md."
+    },
+    "cluster-dispatch": {
+      "grants": "Submit a cluster job: split a prompt into signed subtasks and fan them out, as separate one-to-one requests, to the nodes this node is connected to.",
+      "holder": "peer",
+      "sensitive": false,
+      "note": "The initiate side of cluster inference. Launching a job makes no peer act by itself: where governance is master_governed (three or more members) the Master must ratify the job before any cluster-serve node accepts a subtask, and at peer_pair (exactly two members) the initiator signs it directly. It is not sensitive for that reason \u2014 the gate that makes a peer run work is cluster-serve on the receiving node plus, at three or more, the Master's ratification."
+    },
+    "cluster-serve": {
+      "grants": "Accept a signed cluster subtask over the overlay, run it against this node's own model and local knowledge, and return an attested result.",
+      "holder": "peer",
+      "sensitive": true,
+      "note": "The second sensitive capability after guard-apply, sensitive in the confidentiality direction rather than the mutation direction: the holder lets delegated inference read its local knowledge and returns the result to the cluster. It generalises the compute-serve proposal (COMPUTE_CAPABILITY_DESIGN.md) from a closed operation whitelist to a signed prompt. A node running its own prompts is not gated by this \u2014 only delegated subtasks are \u2014 and any action a served answer triggers still passes the node's own guard."
+    },
+    "admin-supervise": {
+      "grants": "Submit signed admin-requests that make a peer perform Open WebUI administrative actions (list/approve users, change roles, read chats and Knowledge) against its own setup.",
+      "holder": "master",
+      "sensitive": true,
+      "note": "The cross-node administration capability (ADMIN_FEDERATION_DESIGN.md, fabric PLAN Step 29). holder: master — the authority to *issue* sits with the elected key holder; a peer holding this in its registry entry accepts Master-signed admin-requests in guard-protocol order and executes them against the peer's own Open WebUI with the peer's own service-account token, which never leaves the node. The bridge /admin/* route exists and verifies, but authorises nothing until the real registry carries a signed grant of this capability — the same inert posture as cluster-dispatch."
+    }
+  },
+  "master_capabilities": {
+    "note": "The Master's authority is not expressed as a granted capability \u2014 it is possession of the Ed25519 private key, which never leaves the Master. A peer holding this vocabulary but not that key can verify but cannot grant, revoke, or escalate anything. Under the election model this is unchanged in kind: the elected master holds an operational key because a cluster trust root named it, and that root required unanimity. Possession is still the mechanism; a vote is not a substitute for it.",
+    "implied_by_private_key": [
+      "sign-authorization",
+      "revoke-node",
+      "distribute-registry"
+    ]
+  },
+  "escalation_note": "capabilities and overlay_ipv4 are inside the signed envelope (see contracts/identity-schema.json), so editing them in the registry file invalidates the signature. A node with registry write access can revoke (a safe denial) but cannot escalate to guard-apply.",
+  "reformation_note": "Re-formation (a chained master change, policy B) introduces no new capability: it re-uses the election capability for a new root, the existing revoke for any removal, and the existing share/registry path to pull the chained lineage. There is deliberately no 're-form' grant a node could hold \u2014 the direction of a chained root (previous_root_id naming the root in force) is what a signer and a verifier check, so no capability can be added to it without breaking the signature.",
+  "share_types": {
+    "purpose": "A share type states what a share actually conveys. Naming the type is not bookkeeping: a receiver that accepts kb-view must not thereby accept full, so the type is inside the signed share grant and is checked at both ends.",
+    "closed_vocabulary": true,
+    "narrowing_only": "A receiver may always accept a narrower type than offered, never a wider one. Offering kb-view and receiving kb-share is impossible.",
+    "types": {
+      "kb-view": {
+        "conveys": "read the shared pages, in place",
+        "copies": false,
+        "sensitive": false,
+        "note": "Read-only and copy-free. The counterpart reads the live pages; nothing lands in the receiver's vault."
+      },
+      "kb-share": {
+        "conveys": "read and copy shared pages into the receiver's vault",
+        "copies": true,
+        "sensitive": false,
+        "note": "Adds a vault mutation. Reconciliation on arrival is additions and conflicts only; the receiver never silently overwrites an existing page."
+      },
+      "session-view": {
+        "conveys": "read a live session's transcript",
+        "copies": false,
+        "sensitive": true,
+        "note": "Sensitive because a transcript carries whatever the session discussed, including material the speaker never classified. It is not made safe by being read-only."
+      },
+      "session-handoff": {
+        "conveys": "continue a session in the receiver's own node, as a distinct conversation",
+        "copies": true,
+        "sensitive": true,
+        "note": "The counterpart may act on it. This is the strongest share type that does not include node authority, and the reason it is separated from session-view rather than treated as a flag on it."
+      },
+      "full": {
+        "conveys": "every lesser type at once",
+        "copies": true,
+        "sensitive": true,
+        "includes": [
+          "kb-view",
+          "kb-share",
+          "session-view",
+          "session-handoff"
+        ],
+        "note": "A union, never a wildcard. Naming it explicitly keeps 'everything' auditable instead of a future type silently joining it."
+      }
+    }
+  },
+  "share_clocks": {
+    "purpose": "The four deadlines governing a share. They live here rather than only in share-protocol.md because they are load-bearing, and prose that cannot be asserted against silently drifts from the code that enforces it.",
+    "clock_injected": "Every deadline is evaluated against an injected clock, so the tests that exercise expiry run in seconds instead of hours. No test may sleep for a real window.",
+    "silence_is_an_answer": "There is no 'awaiting ratification' state. The absence of a Master decision is a refusal, so an unreachable Master causes shares to expire and can never cause one to persist.",
+    "adjustable": "none of these are adjustable per share",
+    "adjustable_rationale": "A sender wanting longer offers a new share after a human decision, rather than a longer window inside one that no reviewer is watching.",
+    "clocks": {
+      "invite_acceptance": {
+        "duration": "1h",
+        "binds": "recipient",
+        "on_expiry": "the offer never happened; no share opens"
+      },
+      "idle_close": {
+        "duration": "20m",
+        "binds": "both nodes",
+        "on_expiry": "the share lapses and the data-plane stanza is torn down"
+      },
+      "ratification": {
+        "duration": "2h",
+        "binds": "master",
+        "on_expiry": "the share is refused",
+        "applies_in": "master_governed only",
+        "peer_pair_note": "No ratification clock runs in peer_pair. The 2 h window is a Master's to decide within, never a peer's to wait in."
+      },
+      "share_absolute": {
+        "duration": "10h",
+        "binds": "both nodes",
+        "on_expiry": "the share ends regardless of activity",
+        "hard_cap": true
+      }
+    }
+  },
+  "trust_levels": {
+    "purpose": "What a node is believed to be, independent of what it is permitted to do. A node can be permitted and distrusted \u2014 that combination is the normal state of both sides of an unratified share, and collapsing the two would remove the signal that something needs review.",
+    "levels": {
+      "authenticated": {
+        "means": "Identity is in the signed registry, the fingerprint matches, and no share against it is unresolved.",
+        "shares_allowed": true
+      },
+      "flagged": {
+        "means": "A share was opened without ratification and has not been resolved either way. Everything the node touches is recorded as evidence.",
+        "shares_allowed": true,
+        "flagged_note": "Flagged does not mean malicious. It means nobody has decided yet, and the cost of leaving that unrecorded is that nobody later can."
+      },
+      "unauthenticated": {
+        "means": "Identity is not in the signed registry, or was revoked. A revoked node is here permanently; a never-registered one stays here.",
+        "shares_allowed": false
+      }
+    },
+    "retained_after_ratification": true,
+    "retained_rationale": "Ratification authorises the share; it does not erase that unapproved data crossed between nodes. The flag is kept so the record shows what actually happened, which is also what an EU AI Act evidence request asks for. A flag that disappeared on approval would make the interesting events unobservable.",
+    "who_moves_them": "Only the Master, and only as a signed event in the registry naming the reason. A model may summarise the evidence that justifies a change. It may not itself confer or lift a trust level.",
+    "never_a_grant": "A trust level never grants authority. It records a belief. Authority comes from key possession and the signed envelope, per master_capabilities above."
+  }
+}
