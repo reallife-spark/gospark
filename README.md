@@ -121,8 +121,9 @@ bin/sparknet-agent -config configs/agent.example.yaml \
 # Change the registry of a RUNNING control plane over its admin surface. The
 # surface grants full registry authority, so it binds loopback-only and is
 # disabled unless admin.listen is set. See configs/control.example.yaml.
-bin/sparknetctl admin show   -addr http://127.0.0.1:8899
-bin/sparknetctl admin revoke -node node-a            # or -unrevoke to reinstate
+bin/sparknetctl admin show      -addr http://127.0.0.1:8899
+bin/sparknetctl admin authorize -node node-b -pubkey "$NODE_B_PUB" -caps cluster-serve
+bin/sparknetctl admin revoke    -node node-a         # or -unrevoke to reinstate
 ```
 
 Each entry is signed **per entry** over the fabric's `signed_envelope_fields`

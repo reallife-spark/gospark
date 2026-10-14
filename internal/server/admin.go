@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/reallife-spark/goSpark/internal/apiv1"
 	"github.com/reallife-spark/goSpark/internal/authz"
@@ -41,7 +42,51 @@ func (a *App) adminHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/admin/registry", a.handleAdminRegistry)
 	mux.HandleFunc("/admin/registry/revoke", a.handleAdminRevoke)
+	mux.HandleFunc("/admin/registry/authorize", a.handleAdminAuthorize)
 	return mux
+}
+
+// AdminAuthorize grants or updates one node's capabilities on the live
+// registry, then re-signs and re-publishes — the sign-authorization right. It
+// is the running-process counterpart of `sparknetctl registry sign`. The entry
+// is stamped with a fresh issue time, so a grant also advances the rollback
+// guard.
+func (a *App) AdminAuthorize(ctx context.Context, proj apiv1.NodeIdentity, capabilities []string, ttl time.Duration) (string, error) {
+	if a.role != RoleControl {
+		return "", errors.New("server: admin surface is control-plane only")
+	}
+	if a.registryDoc == nil {
+		return "", errors.New("server: no registry configured")
+	}
+	if proj.NodeID == "" {
+		return "", errors.New("authz: node_id is required")
+	}
+	if len(capabilities) == 0 {
+		return "", errors.New("authz: at least one capability is required")
+	}
+	if ttl <= 0 {
+		ttl = authz.DefaultAuthorizationTTL
+	}
+	now := time.Now()
+	entry, err := authz.NewAuthorization(a.id, proj, capabilities, now, now.Add(ttl))
+	if err != nil {
+		return "", err
+	}
+	digest, err := a.mutateRegistry(ctx, func(doc *apiv1.NodeRegistry) error {
+		for i := range doc.Authorizations {
+			if doc.Authorizations[i].Identity.NodeID == entry.Identity.NodeID {
+				doc.Authorizations[i] = entry
+				return nil
+			}
+		}
+		doc.Authorizations = append(doc.Authorizations, entry)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	a.log.Info("authorization granted", "node", proj.NodeID, "caps", capabilities, "digest", short(digest))
+	return digest, nil
 }
 
 // AdminRevoke flips one node's revocation flag on the live registry, re-signs
@@ -141,6 +186,39 @@ func (a *App) adminReplace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeAdminJSON(w, http.StatusOK, map[string]any{"digest": digest, "nodes": len(req.Authorizations)})
+}
+
+// handleAdminAuthorize accepts {"identity": {...}, "capabilities": [...],
+// "ttl_seconds": N}. It upserts one node's authorization, the sign-authorization
+// right.
+func (a *App) handleAdminAuthorize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Identity     apiv1.NodeIdentity `json:"identity"`
+		Capabilities []string           `json:"capabilities"`
+		TTLSeconds   int64              `json:"ttl_seconds"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		writeAdminError(w, http.StatusBadRequest, fmt.Errorf("decode body: %w", err))
+		return
+	}
+	ttl := authz.DefaultAuthorizationTTL
+	if req.TTLSeconds > 0 {
+		ttl = time.Duration(req.TTLSeconds) * time.Second
+	}
+	digest, err := a.AdminAuthorize(r.Context(), req.Identity, req.Capabilities, ttl)
+	if err != nil {
+		writeAdminError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeAdminJSON(w, http.StatusOK, map[string]any{
+		"digest":       digest,
+		"node_id":      req.Identity.NodeID,
+		"capabilities": req.Capabilities,
+	})
 }
 
 // handleAdminRevoke accepts {"node_id": "...", "revoked": bool}. revoked

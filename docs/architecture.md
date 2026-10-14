@@ -109,6 +109,8 @@ verifies every entry against its pinned master key.
 Changing a *running* control plane's registry goes through the **admin
 surface** (`internal/server/admin.go`), an HTTP endpoint disabled unless
 `admin.listen` is set. `GET /admin/registry` snapshots the served registry,
+`POST /admin/registry/authorize` grants or updates one node (the
+sign-authorization right, `sparknetctl admin authorize`),
 `POST /admin/registry/revoke` flips one node's flag, and `PUT /admin/registry`
 replaces the whole authorization set. Every route funnels through
 `mutateRegistry`, the single write path that re-signs with a fresh stamp,

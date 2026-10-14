@@ -183,6 +183,108 @@ func TestAdminRevokeAgentRefused(t *testing.T) {
 	}
 }
 
+// TestAdminAuthorize exercises the sign-authorization right: a new node is
+// granted capabilities, an unknown capability is refused, and re-authorizing an
+// existing node upserts (replaces) its capabilities rather than duplicating it.
+func TestAdminAuthorize(t *testing.T) {
+	shared := bus.NewMemory()
+	defer shared.Close()
+
+	controlID, _ := identity.Generate("control", identity.RoleMaster)
+	agentA, _ := identity.Generate("node-a", identity.RolePeer)
+	doc := &apiv1.NodeRegistry{Authorizations: []apiv1.NodeAuthorization{{
+		Identity:     agentA.Projection(),
+		Capabilities: []string{string(authz.CapClusterServe)},
+	}}}
+
+	cfg := config.Default()
+	cfg.Gateway.Listen = "127.0.0.1:0"
+	cfg.Transport.Listen = "127.0.0.1:0"
+	control, err := New(Options{Config: cfg, Identity: controlID, Role: RoleControl, Registry: doc, Bus: shared})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	published := make(chan struct{}, 1)
+	if _, err := shared.Subscribe(ctx, bus.Subject("sparknet", bus.KindRegistry, ""),
+		func(_ context.Context, _ string, _ []byte) error {
+			select {
+			case published <- struct{}{}:
+			default:
+			}
+			return nil
+		}); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = control.Run(ctx) }()
+	select {
+	case <-published:
+	case <-time.After(3 * time.Second):
+		t.Fatal("control plane never published its registry")
+	}
+
+	srv := httptest.NewServer(control.adminHandler())
+	defer srv.Close()
+
+	agentB, _ := identity.Generate("node-b", identity.RolePeer)
+	authorizeNode(t, srv.URL, agentB.Projection(), []string{string(authz.CapClusterServe)}, 3600)
+	view := getRegistry(t, srv.URL)
+	if len(view.Nodes) != 2 || findNode(view, "node-b") == nil {
+		t.Fatalf("after authorize nodes = %+v, want node-a and node-b", view.Nodes)
+	}
+
+	// An unknown capability is refused (400) and changes nothing.
+	raw, _ := json.Marshal(map[string]any{"identity": agentB.Projection(), "capabilities": []string{"not-a-cap"}})
+	resp, err := http.Post(srv.URL+"/admin/registry/authorize", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown capability status = %d, want 400", resp.StatusCode)
+	}
+
+	// Re-authorizing upserts: node-b's capabilities are replaced, not appended.
+	authorizeNode(t, srv.URL, agentB.Projection(), []string{string(authz.CapTelemetry)}, 3600)
+	view = getRegistry(t, srv.URL)
+	n := findNode(view, "node-b")
+	if n == nil || len(n.Capabilities) != 1 || n.Capabilities[0] != string(authz.CapTelemetry) {
+		t.Fatalf("node-b after upsert = %+v, want [telemetry]", n)
+	}
+	if len(view.Nodes) != 2 {
+		t.Fatalf("authorize duplicated the node: %+v", view.Nodes)
+	}
+
+	// Every entry the admin surface serves — including the one it just minted —
+	// must carry a valid Master signature.
+	control.regMu.RLock()
+	served := control.registryDoc
+	control.regMu.RUnlock()
+	if err := authz.VerifyRegistry(controlID.Public, served); err != nil {
+		t.Fatalf("served registry does not verify against the master key: %v", err)
+	}
+}
+
+func authorizeNode(t *testing.T, base string, proj apiv1.NodeIdentity, caps []string, ttl int64) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{"identity": proj, "capabilities": caps, "ttl_seconds": ttl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return postJSON(t, base+"/admin/registry/authorize", string(raw))
+}
+
+func findNode(v adminRegistryView, id string) *adminNodeView {
+	for i := range v.Nodes {
+		if v.Nodes[i].NodeID == id {
+			return &v.Nodes[i]
+		}
+	}
+	return nil
+}
+
 func getRegistry(t *testing.T, base string) adminRegistryView {
 	t.Helper()
 	resp, err := http.Get(base + "/admin/registry")

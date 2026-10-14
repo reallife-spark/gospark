@@ -77,6 +77,7 @@ Usage:
   sparknetctl registry revoke -master-key FILE -registry FILE -node ID [-unrevoke] [-out FILE]
   sparknetctl admin show  [-addr URL]
   sparknetctl admin revoke -node ID [-unrevoke] [-addr URL]
+  sparknetctl admin authorize -node ID -pubkey B64 -caps a,b [-role peer] [-overlay IP] [-ttl 8760h] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
   sparknetctl decode-block -file BLOCK.canonical
@@ -283,15 +284,17 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke")
+		return fmt.Errorf("admin: expected show|revoke|authorize")
 	}
 	switch args[0] {
 	case "show":
 		return cmdAdminShow(args[1:])
 	case "revoke":
 		return cmdAdminRevoke(args[1:])
+	case "authorize":
+		return cmdAdminAuthorize(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize)", args[0])
 	}
 }
 
@@ -316,6 +319,44 @@ func cmdAdminRevoke(args []string) error {
 		return err
 	}
 	return adminRequest(*addr, http.MethodPost, "/admin/registry/revoke", body)
+}
+
+func cmdAdminAuthorize(args []string) error {
+	fs := flag.NewFlagSet("admin authorize", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	node := fs.String("node", "", "node id")
+	pub := fs.String("pubkey", "", "node public key, base64 (the wireguard_public_key_b64 slot)")
+	role := fs.String("role", identity.RolePeer, "node role: master|peer")
+	overlay := fs.String("overlay", "", "node overlay IPv4")
+	caps := fs.String("caps", "", "comma-separated capabilities to grant")
+	reqCaps := fs.String("req-caps", "", "projection requested_capabilities (default: -caps)")
+	ttl := fs.Duration("ttl", authz.DefaultAuthorizationTTL, "authorization lifetime (Go duration)")
+	_ = fs.Parse(args)
+	if *node == "" || *pub == "" || *caps == "" {
+		return fmt.Errorf("admin authorize: -node, -pubkey and -caps are required")
+	}
+	if _, err := identity.ParsePublicKeyB64(*pub); err != nil {
+		return err
+	}
+	requested := *reqCaps
+	if requested == "" {
+		requested = *caps
+	}
+	body, err := json.Marshal(map[string]any{
+		"identity": apiv1.NodeIdentity{
+			NodeID:                *node,
+			Role:                  *role,
+			WireGuardPublicKeyB64: *pub,
+			OverlayIPv4:           *overlay,
+			RequestedCapabilities: splitCSV(requested),
+		},
+		"capabilities": splitCSV(*caps),
+		"ttl_seconds":  int64(ttl.Seconds()),
+	})
+	if err != nil {
+		return err
+	}
+	return adminRequest(*addr, http.MethodPost, "/admin/registry/authorize", body)
 }
 
 // adminRequest performs one admin call and prints the JSON response, turning a
