@@ -37,6 +37,11 @@ type Gateway struct {
 	// ProbeTimeout bounds the /readyz upstream probe. Zero uses
 	// DefaultProbeTimeout.
 	ProbeTimeout time.Duration
+
+	// Draining, when set and returning true, makes the gateway report not-ready
+	// and refuse new inference requests, so a draining process quiesces while
+	// in-flight responses finish. Nil means never draining.
+	Draining func() bool
 }
 
 const (
@@ -86,6 +91,11 @@ func (g *Gateway) probeTimeout() time.Duration {
 	return DefaultProbeTimeout
 }
 
+// draining reports whether the gateway is quiescing. A nil hook never drains.
+func (g *Gateway) draining() bool {
+	return g.Draining != nil && g.Draining()
+}
+
 // handleHealth is liveness: the gateway process is up. It does not probe the
 // upstream, so it stays fast and never blocks on a slow engine.
 func (g *Gateway) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -100,6 +110,12 @@ func (g *Gateway) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // means the compute-plane engine is reachable. It probes the upstream's models
 // endpoint and reports 503 until the engine answers.
 func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
+	if g.draining() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"ready": false, "reason": "draining", "model": g.Model,
+		})
+		return
+	}
 	if g.Upstream == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 			"ready": false, "reason": "no upstream configured", "model": g.Model,
@@ -173,6 +189,10 @@ func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
 // event-stream responses unbuffered so a reverse proxy in front (nginx and
 // friends) does not hold the tokens back either.
 func (g *Gateway) proxy(w http.ResponseWriter, r *http.Request) {
+	if g.draining() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "gateway draining"})
+		return
+	}
 	if g.Upstream == "" {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no upstream configured"})
 		return

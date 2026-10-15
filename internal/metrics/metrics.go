@@ -40,7 +40,9 @@ type Snapshot struct {
 	// Role is "control" or "agent".
 	Role string
 	// NodeID is the local node's id.
-	NodeID   string
+	NodeID string
+	// Draining is true while the process quiesces (no new work accepted).
+	Draining bool
 	Counters Counters
 	Nodes    []Node
 }
@@ -86,6 +88,8 @@ func Write(w io.Writer, snap Snapshot) error {
 	}
 	help(bw, "gospark_build_info", "Build and role of this goSpark process.", "gauge")
 	metric(bw, "gospark_build_info", labels{"version": build, "role": snap.Role, "node": snap.NodeID}, 1)
+	help(bw, "gospark_draining", "Whether the process is draining (1) or accepting work (0).", "gauge")
+	metric(bw, "gospark_draining", nil, boolVal(snap.Draining))
 	bw.WriteByte('\n')
 
 	// Counters: every one is monotonic, so they are `counter` typed.

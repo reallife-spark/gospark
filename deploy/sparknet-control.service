@@ -1,0 +1,32 @@
+[Unit]
+Description=goSpark control plane (SparkNet master role)
+Documentation=https://github.com/reallife-spark/goSpark
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sparknet
+Group=sparknet
+WorkingDirectory=/opt/sparknet
+EnvironmentFile=/etc/sparknet/control.env
+ExecStart=/opt/sparknet/bin/sparknet-control -config ${GOSPARK_CONTROL_CONFIG} -master-key ${GOSPARK_MASTER_KEY}
+Restart=on-failure
+RestartSec=3
+
+# Graceful drain. SIGTERM flips the process to drain: it refuses new dispatches
+# and the gateway reports 503 on /readyz while in-flight requests finish. The
+# internal drain window is 5s, so TimeoutStopSec must exceed it.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Hardening. The process holds the Master signing key and needs write access to
+# its state directory only; everything else stays read-only.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sparknet/.state
+
+[Install]
+WantedBy=multi-user.target

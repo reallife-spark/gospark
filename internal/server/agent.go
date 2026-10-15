@@ -48,7 +48,7 @@ func (a *App) runAgent(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				_ = a.PublishHealth(ctx, true)
+				_ = a.PublishHealth(ctx, !a.Draining())
 			}
 		}
 	}()
@@ -120,6 +120,13 @@ func (a *App) registryAllowsSelf() bool {
 // result. Every refusal path returns an error to the bus (a NAK), so a poison
 // message is retried or dead-lettered rather than silently dropped.
 func (a *App) onTask(ctx context.Context, _ string, data []byte) error {
+	// While draining, refuse new work so the bus can redeliver it elsewhere (or
+	// after a restart) instead of starting a task this process is leaving.
+	if a.Draining() {
+		a.counters.TasksRefused.Add(1)
+		a.log.Warn("task refused: draining")
+		return fmt.Errorf("server: node is draining")
+	}
 	var env apiv1.TaskEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
 		a.counters.TasksRefused.Add(1)

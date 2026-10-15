@@ -1,0 +1,29 @@
+[Unit]
+Description=goSpark signed backup daemon (sparknet-backup)
+Documentation=https://github.com/reallife-spark/goSpark
+After=local-fs.target
+
+[Service]
+Type=simple
+User=sparknet
+Group=sparknet
+WorkingDirectory=/opt/sparknet
+EnvironmentFile=/etc/sparknet/backup.env
+# `run` loops on the configured interval, signing and verifying each snapshot.
+ExecStart=/opt/sparknet/bin/sparknet-backup run -config ${GOSPARK_BACKUP_CONFIG} -key ${GOSPARK_BACKUP_KEY}
+Restart=on-failure
+RestartSec=10
+
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Hardening. The daemon reads the source tree and writes snapshots under the
+# target; both are exposed for writing here.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/sparknet-backups /opt/sparknet/.state
+
+[Install]
+WantedBy=multi-user.target

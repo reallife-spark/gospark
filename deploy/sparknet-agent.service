@@ -1,0 +1,35 @@
+[Unit]
+Description=goSpark node agent (SparkNet peer role)
+Documentation=https://github.com/reallife-spark/goSpark
+After=network-online.target
+Wants=network-online.target
+# The agent verifies tasks signed by the control plane; start after it if the
+# control plane runs on the same host.
+After=sparknet-control.service
+Wants=sparknet-control.service
+
+[Service]
+Type=simple
+User=sparknet
+Group=sparknet
+WorkingDirectory=/opt/sparknet
+EnvironmentFile=/etc/sparknet/agent.env
+ExecStart=/opt/sparknet/bin/sparknet-agent -config ${GOSPARK_AGENT_CONFIG} -key ${GOSPARK_NODE_KEY} -master-pub ${GOSPARK_MASTER_PUB}
+Restart=on-failure
+RestartSec=3
+
+# Graceful drain: SIGTERM stops accepting new tasks (they are NAK'd so the bus
+# redelivers them) and reports serving=false, while the in-flight task finishes.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Hardening. The node's private key needs read access; the state directory is
+# the only writable path.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sparknet/.state
+
+[Install]
+WantedBy=multi-user.target

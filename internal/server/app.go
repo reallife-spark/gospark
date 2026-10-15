@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/reallife-spark/goSpark/internal/apiv1"
@@ -120,6 +121,11 @@ type App struct {
 	boundAddr     string
 	injectedBus   bus.Bus
 	ownsBus       bool
+
+	// draining is set when the process stops accepting new work (operator drain
+	// or shutdown) so in-flight work can finish. It gates new task dispatches and
+	// new gateway requests, is reported by /readyz, and shows in /metrics.
+	draining atomic.Bool
 }
 
 // New builds an App from options.
@@ -160,6 +166,7 @@ func New(opts Options) (*App, error) {
 	a.gw.Model = opts.Config.Gateway.Model
 	a.gw.ReadyPath = opts.Config.Gateway.ReadyPath
 	a.gw.ProbeTimeout = opts.Config.Gateway.ProbeTimeout
+	a.gw.Draining = a.Draining
 
 	if opts.Config.Compute.Endpoint != "" {
 		ex, err := compute.NewHTTPExecutor(compute.Options{
@@ -297,7 +304,8 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	<-ctx.Done()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	a.BeginDrain()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), drainShutdownTimeout)
 	defer cancel()
 	_ = gwSrv.Shutdown(shutdownCtx)
 	return nil

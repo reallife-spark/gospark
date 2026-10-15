@@ -82,6 +82,7 @@ Usage:
   sparknetctl admin gpu    [-addr URL]
   sparknetctl admin health [-addr URL]
   sparknetctl admin metrics [-addr URL]
+  sparknetctl admin drain [-addr URL]
   sparknetctl admin place  [-caps cluster-serve] [-min-free-mem BYTES] [-max-temp C] [-require-healthy] [-max-age DUR] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
@@ -289,7 +290,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place|kvcache|metrics")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place|kvcache|metrics|drain")
 	}
 	switch args[0] {
 	case "show":
@@ -308,9 +309,20 @@ func cmdAdmin(args []string) error {
 		return cmdAdminKVCache(args[1:])
 	case "metrics":
 		return cmdAdminMetrics(args[1:])
+	case "drain":
+		return cmdAdminDrain(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place|kvcache|metrics)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place|kvcache|metrics|drain)", args[0])
 	}
+}
+
+// cmdAdminDrain tells a running control plane to enter drain: it stops accepting
+// new work while in-flight requests finish.
+func cmdAdminDrain(args []string) error {
+	fs := flag.NewFlagSet("admin drain", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	_ = fs.Parse(args)
+	return adminRequest(*addr, http.MethodPost, "/admin/drain", nil)
 }
 
 // cmdAdminMetrics fetches the control plane's Prometheus text exposition.

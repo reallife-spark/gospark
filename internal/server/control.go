@@ -313,6 +313,11 @@ func (a *App) authorizeNode(nodeID string, cap authz.Capability) error {
 // plane does not wait: the result arrives asynchronously on the result subject,
 // which is the async boundary the design requires over a WAN.
 func (a *App) DispatchTask(ctx context.Context, nodeID string, env apiv1.TaskEnvelope) error {
+	if a.Draining() {
+		a.counters.TasksRefused.Add(1)
+		a.log.Warn("dispatch refused: draining")
+		return fmt.Errorf("server: control plane is draining")
+	}
 	if err := a.authorizeNode(nodeID, authz.CapClusterServe); err != nil {
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("dispatch refused: node not authorized", "node", nodeID, "err", err)

@@ -50,6 +50,7 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/metrics", a.handleAdminMetrics)
 	mux.HandleFunc("/admin/placement", a.handleAdminPlacement)
 	mux.HandleFunc("/admin/kvcache", a.handleAdminKVCache)
+	mux.HandleFunc("/admin/drain", a.handleAdminDrain)
 	return mux
 }
 

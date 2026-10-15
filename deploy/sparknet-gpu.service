@@ -1,0 +1,33 @@
+[Unit]
+Description=goSpark GPU telemetry sidecar (sparknet-gpu)
+Documentation=https://github.com/reallife-spark/goSpark
+After=network-online.target
+Wants=network-online.target
+After=nvidia-persistenced.service
+Wants=nvidia-persistenced.service
+
+[Service]
+Type=simple
+User=sparknet
+Group=sparknet
+# NVML needs the driver's device nodes and the render nodes.
+SupplementaryGroups=video render
+WorkingDirectory=/opt/sparknet
+EnvironmentFile=/etc/sparknet/gpu.env
+# -watch publishes telemetry on the health subject every interval; without it
+# the sidecar prints one snapshot and exits.
+ExecStart=/opt/sparknet/bin/sparknet-gpu -config ${GOSPARK_GPU_CONFIG} -watch
+Restart=always
+RestartSec=5
+
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Hardening. The sidecar only reads the GPU and publishes to the bus.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

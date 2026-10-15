@@ -40,9 +40,10 @@ func (a *App) metricsHandler() http.Handler {
 func (a *App) metricsSnapshot() metrics.Snapshot {
 	cs := a.counters.Snapshot()
 	snap := metrics.Snapshot{
-		Build:  Version,
-		Role:   string(a.role),
-		NodeID: a.id.NodeID,
+		Build:    Version,
+		Role:     string(a.role),
+		NodeID:   a.id.NodeID,
+		Draining: a.Draining(),
 		Counters: metrics.Counters{
 			TasksVerified:   cs.TasksVerified,
 			TasksRefused:    cs.TasksRefused,
