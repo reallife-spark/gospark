@@ -81,15 +81,26 @@ routes, records or transports is *control/service plane*.
   a Python/CUDA worker and attest the worker's result; the closed sandbox stays
   the default and local operations can never be shadowed. Ships with the
   reference worker `compute/compute_worker.py` (`internal/compute`; ADR 0006).
+- **Ingest seam** — the indexer crawls, chunks and emits a JSON index, and can
+  embed each chunk through an OpenAI-compatible embeddings service; the worker
+  serves `/v1/embeddings` and falls back to a deterministic hashed embedding so
+  the pipeline runs without a GPU (`internal/ingest`, `internal/embed`,
+  `cmd/sparknet-ingest`; ADR 0008).
+- **KV-routing seam** — the router asks a compute-plane RadixAttention engine
+  which node holds a prompt's cached KV prefix and ranks that node first; a miss
+  or an unreachable engine degrades to telemetry placement (`internal/kvrouter`
+  + the `ResidentNode` placement hint; ADR 0009).
 - **Operator CLI** — `cmd/sparknetctl` (identity, registry, admin, routing,
-  blocks, `admin gpu`, `admin place`, `admin health`).
+  blocks, `admin gpu`, `admin place`, `admin health`, `admin kvcache`).
 
 ## Deliberate seams (interface exists, body is elsewhere)
 
 1. **Compute plane** — no model, tensors, tokenizer or CUDA is linked in. It is
-   reached two ways: the gateway proxies inference requests, and agents delegate
-   named GPU operations over the compute seam to `compute/compute_worker.py`.
-   The gateways and the seam are the only doors; the runtime is never linked.
+   reached three ways: the gateway proxies inference requests, agents delegate
+   named GPU operations over the compute seam to `compute/compute_worker.py`,
+   and the router queries KV-prefix residency from
+   `compute/kv_cache_router.py`. Those doors are the only contact; the runtime
+   is never linked.
 2. **VRAM-aware scheduling** — node *selection* is capacity-aware
    (`internal/placement`: dispatch avoids a node that cannot hold the work and
    prefers more free VRAM); the token-count router's own edge/DGX/cluster
