@@ -43,7 +43,7 @@ routes, records or transports is *control/service plane*.
 | §3.8 `security_gateway.py` — IP whitelist / `X-Sparknet-Auth` gateway | goSpark | `internal/authz` (signed envelopes) + `internal/gateway`; mTLS mesh is **seam** |
 | §3.9 `provision_cluster.sh` — node provisioning playbook | out of scope (ops) | — |
 | §3.10 `kv_cache_router.py` — distributed RadixAttention + KV prefetch router | goSpark seam | `internal/kvrouter` (residency query) + `internal/router` (decisions) + `internal/kvtransfer` (NVFP4 codec/delta) + `internal/transport` (QUIC); the RadixAttention *tree* is **compute plane** (`compute/kv_cache_router.py` reference) |
-| §3.11 `sparknet_backup.py` — storage/knowledge backup daemon | goSpark seam | not built; the fabric's own signed-registry/ledger is the durable core |
+| §3.11 `sparknet_backup.py` — storage/knowledge backup daemon | goSpark | `internal/backup` + `cmd/sparknet-backup`: signed, content-addressed incremental snapshots with re-hash verify and restore (no rsync, no shell); the fabric's signed registry/ledger remains the durable core |
 | §3.12 `docker-compose.webui.yml` — Open WebUI workstation | compute plane | **seam**: `internal/gateway` is the routing/auth endpoint it calls; Open WebUI runs in `compute/docker-compose.vllm.yml` (profile `webui`) pointed at the gateway |
 | §3.13 `sparknet_router_pipeline.py` — Open WebUI routing/auth pipeline | goSpark seam | `internal/router` + `internal/gateway`; persona/context injection is **compute plane** |
 | §3.14 `sparknet_e2e_test.py` — end-to-end validation suite | goSpark | `make test`, `make test-nats`, `tests/` integration suites |
@@ -92,6 +92,9 @@ routes, records or transports is *control/service plane*.
   + the `ResidentNode` placement hint; ADR 0009).
 - **Operator CLI** — `cmd/sparknetctl` (identity, registry, admin, routing,
   blocks, `admin gpu`, `admin place`, `admin health`, `admin kvcache`).
+- **Backup seam** — signed, content-addressed incremental snapshots with re-hash
+  verify and restore, driven by `cmd/sparknet-backup` (no rsync, no shell;
+  `internal/backup`; ADR 0010).
 
 ## Deliberate seams (interface exists, body is elsewhere)
 
@@ -122,7 +125,7 @@ routes, records or transports is *control/service plane*.
 | Art. 9 | Risk management | `cmd/sparknet-gpu` + `internal/gputel` thermal/memory/health telemetry; control-plane health `Registry` |
 | Art. 10 | Data governance & provenance | signed envelopes + `internal/ingest` (crawl/chunk); storage stays local, no cloud |
 | Art. 11 | Technical documentation | `docs/architecture.md`, `docs/adr/`, this roadmap |
-| Art. 12 | Record-keeping / logging | attested results, `internal/telemetry` counters, per-entry registry ledger |
+| Art. 12 | Record-keeping / logging | attested results, `internal/telemetry` counters, per-entry registry ledger, signed backup snapshots (`internal/backup`) |
 | Art. 13 | Transparency | gateway/router attribution surfaces; UI labeling is compute plane |
 | Art. 14 | Human oversight | admin surface is a human-in-the-loop control; deployment policy is ops |
 | Art. 15 | Security & robustness | Ed25519 signed authority, fail-closed verification, QUIC transport |

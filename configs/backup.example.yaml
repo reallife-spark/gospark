@@ -1,0 +1,24 @@
+# goSpark backup daemon — example config for `sparknet-backup`.
+#
+# A backup is a signed, content-addressed snapshot: every file is hashed, the
+# manifest is Ed25519-signed with the node key, and verify re-hashes the tree so
+# a restore can prove a snapshot authentic and intact. No rsync, no shell.
+
+backup:
+  # The directory tree to snapshot (a knowledge vault, state dir, or ledger).
+  source: /mnt/knowledge
+
+  # Where timestamped snapshots are written: <target>/snap_YYYYMMDD_HHMMSS/.
+  target: /mnt/data/backups
+
+  # The node key that signs each manifest. It needs the private half. Keep it
+  # 0600 and never commit it; reference the path only.
+  key_file: /etc/sparknet/node.key
+
+  # Daemon cadence for `sparknet-backup run`.
+  interval: 24h
+
+  # Directory names pruned from the snapshot (empty = capture everything).
+  skip_dirs:
+    - .git
+    - node_modules

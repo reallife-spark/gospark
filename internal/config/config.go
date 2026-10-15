@@ -26,6 +26,7 @@ type Config struct {
 	Compute   ComputeConfig   `yaml:"compute"`
 	Embed     EmbedConfig     `yaml:"embed"`
 	KV        KVConfig        `yaml:"kv"`
+	Backup    BackupConfig    `yaml:"backup"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -148,6 +149,22 @@ type KVConfig struct {
 	Timeout time.Duration `yaml:"timeout"`
 }
 
+// BackupConfig points the backup daemon at a source tree, a target directory
+// and the node key used to sign each snapshot's manifest. It is a
+// control/service-plane task: content-hash, sign, verify, restore — no rsync.
+type BackupConfig struct {
+	// Source is the directory tree to snapshot.
+	Source string `yaml:"source"`
+	// Target is the directory under which timestamped snapshots are created.
+	Target string `yaml:"target"`
+	// KeyFile is the node key that signs manifests (needs the private half).
+	KeyFile string `yaml:"key_file"`
+	// Interval is the daemon's snapshot cadence.
+	Interval time.Duration `yaml:"interval"`
+	// SkipDirs are directory names pruned from the snapshot (e.g. ".git").
+	SkipDirs []string `yaml:"skip_dirs"`
+}
+
 // Default returns the built-in defaults before any file or env override.
 func Default() Config {
 	return Config{
@@ -175,6 +192,9 @@ func Default() Config {
 		},
 		KV: KVConfig{
 			Timeout: 2 * time.Second,
+		},
+		Backup: BackupConfig{
+			Interval: 24 * time.Hour,
 		},
 	}
 }
@@ -272,6 +292,23 @@ func applyEnv(cfg *Config) {
 			cfg.KV.Timeout = d
 		}
 	}
+	if v := os.Getenv("GOSPARK_BACKUP_SOURCE"); v != "" {
+		cfg.Backup.Source = v
+	}
+	if v := os.Getenv("GOSPARK_BACKUP_TARGET"); v != "" {
+		cfg.Backup.Target = v
+	}
+	if v := os.Getenv("GOSPARK_BACKUP_KEY_FILE"); v != "" {
+		cfg.Backup.KeyFile = v
+	}
+	if v := os.Getenv("GOSPARK_BACKUP_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Backup.Interval = d
+		}
+	}
+	if v := os.Getenv("GOSPARK_BACKUP_SKIP_DIRS"); v != "" {
+		cfg.Backup.SkipDirs = splitList(v)
+	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v
 	}
@@ -341,6 +378,9 @@ func (c Config) Validate() error {
 	}
 	if c.KV.Timeout < 0 {
 		return fmt.Errorf("config: kv.timeout must be >= 0")
+	}
+	if c.Backup.Interval < 0 {
+		return fmt.Errorf("config: backup.interval must be >= 0")
 	}
 	return nil
 }

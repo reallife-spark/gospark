@@ -181,3 +181,36 @@ func TestValidateRejectsNegativeProbeTimeout(t *testing.T) {
 		t.Fatal("negative gateway.probe_timeout should be rejected")
 	}
 }
+
+func TestEnvOverridesBackup(t *testing.T) {
+	t.Setenv("GOSPARK_BACKUP_SOURCE", "/mnt/knowledge")
+	t.Setenv("GOSPARK_BACKUP_TARGET", "/mnt/data/backups")
+	t.Setenv("GOSPARK_BACKUP_KEY_FILE", "/etc/sparknet/node.key")
+	t.Setenv("GOSPARK_BACKUP_INTERVAL", "6h")
+	t.Setenv("GOSPARK_BACKUP_SKIP_DIRS", ".git, node_modules")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Backup.Source != "/mnt/knowledge" || cfg.Backup.Target != "/mnt/data/backups" {
+		t.Errorf("backup = %+v", cfg.Backup)
+	}
+	if cfg.Backup.KeyFile != "/etc/sparknet/node.key" {
+		t.Errorf("backup key_file = %q", cfg.Backup.KeyFile)
+	}
+	if cfg.Backup.Interval != 6*time.Hour {
+		t.Errorf("backup interval = %v", cfg.Backup.Interval)
+	}
+	if len(cfg.Backup.SkipDirs) != 2 || cfg.Backup.SkipDirs[0] != ".git" {
+		t.Errorf("backup skip_dirs = %v", cfg.Backup.SkipDirs)
+	}
+}
+
+func TestValidateRejectsNegativeBackupInterval(t *testing.T) {
+	cfg := config.Default()
+	cfg.Backup.Interval = -time.Hour
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative backup.interval should be rejected")
+	}
+}

@@ -33,6 +33,7 @@ while a GPU job is in flight.
 | `internal/ingest` | concurrent vault/git crawl + chunking for local RAG |
 | `internal/embed` | OpenAI-compatible embeddings client, the ingest seam to the compute plane (no model, no CUDA) |
 | `internal/kvrouter` | client for a compute-plane RadixAttention engine: asks which node holds a prompt's cached KV prefix (no model, no CUDA) |
+| `internal/backup` | signed, content-addressed snapshot / verify / restore of a directory tree (pure Go I/O, no rsync) |
 | `internal/bus` | NATS/JetStream-backed bus with an in-memory test double |
 | `internal/config` | YAML config + `GOSPARK_*` env overrides |
 | `internal/mesh` | WireGuard overlay inspection/re-route |
@@ -307,6 +308,29 @@ daemon is [`compute/kv_cache_router.py`](compute/README.md); the NVFP4 blocks it
 indexes move over [`internal/kvtransfer`](docs/architecture.md) +
 `internal/transport`. See
 [`docs/adr/0009-kv-routing-seam.md`](docs/adr/0009-kv-routing-seam.md).
+
+## Backup seam
+
+The blueprint's §3.11 `sparknet_backup.py` mirrors a directory with rsync. A copy
+that cannot prove it is the copy that was taken is not a backup, so goSpark's
+slice is the half that makes one trustworthy: `sparknet-backup` hashes every
+file, signs the manifest with the node key the same way every fabric envelope is
+signed, and re-hashes the tree on verify.
+
+```bash
+# One signed snapshot (incremental by default — unchanged files are hard-linked)
+bin/sparknet-backup snapshot -source /mnt/knowledge -target /mnt/data/backups -key /etc/sparknet/node.key
+# Prove a snapshot authentic and intact before trusting it
+bin/sparknet-backup verify -dir /mnt/data/backups/snap_20261015_030000 -key /etc/sparknet/node.key
+# Restore (verifies first; refuses a tampered backup)
+bin/sparknet-backup restore -dir /mnt/data/backups/snap_20261015_030000 -dest /tmp/restored -key /etc/sparknet/node.key
+# Daemon: snapshot on an interval
+bin/sparknet-backup run -config configs/backup.example.yaml
+```
+
+No shell, no `--delete`; a snapshot is authentic (signature), intact (re-hash) and
+chained (`previous_digest`). See
+[`docs/adr/0010-backup-seam.md`](docs/adr/0010-backup-seam.md).
 
 ## Contract provenance
 

@@ -226,6 +226,26 @@ the tree indexes are the transport's job: `internal/kvtransfer` is the codec and
 `internal/transport` streams the blocks over HTTP/3. The reference RadixAttention
 daemon is `compute/kv_cache_router.py` (ADR 0009).
 
+## Backup seam (`internal/backup`)
+
+A backup that cannot prove it is the copy that was taken is not a backup. The
+blueprint's §3.11 `sparknet_backup.py` mirrors a directory with rsync; goSpark's
+slice adds provenance. `internal/backup` hashes every file (symlinks by target),
+writes a manifest whose signable body is canonicalised with
+`apiv1.CanonicalJSON` and Ed25519-signed with the node key (`internal/identity`),
+and content-addresses the snapshot by the hex SHA-256 of that body — the same
+`digest` becomes the next run's `previous_digest`, chaining successive
+snapshots. `Verify` proves the manifest (digest recomputes; signature valid
+against a key the caller trusts, never the embedded one) and `VerifyTree`
+re-hashes the tree, failing on a changed, missing or added file. `Restore`
+verifies both before writing, so a tampered backup is refused.
+
+Incremental runs hard-link files unchanged since the previous snapshot instead of
+recopying them (falling back to a copy across devices). `cmd/sparknet-backup` is
+the daemon: `run` loops on `backup.interval`, `snapshot`/`verify`/`restore`/`show`
+are the operator actions. It builds in-process — no `shell=True`, no `--delete` —
+and stays `CGO_ENABLED=0` (ADR 0010).
+
 ## Configuration
 
 One YAML file plus `GOSPARK_*` env overrides (`internal/config`). Defaults are
