@@ -167,6 +167,11 @@ func New(opts Options) (*App, error) {
 	a.gw.ReadyPath = opts.Config.Gateway.ReadyPath
 	a.gw.ProbeTimeout = opts.Config.Gateway.ProbeTimeout
 	a.gw.Draining = a.Draining
+	a.gw.Limiter = gateway.NewLimiter(
+		opts.Config.Gateway.MaxInflight,
+		opts.Config.Gateway.MaxQueued,
+		opts.Config.Gateway.QueueWait,
+	)
 
 	if opts.Config.Compute.Endpoint != "" {
 		ex, err := compute.NewHTTPExecutor(compute.Options{

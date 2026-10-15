@@ -64,6 +64,17 @@ func (a *App) metricsSnapshot() metrics.Snapshot {
 			GPU:          a.metricsGPU(n.NodeID, n.GPU),
 		})
 	}
+	if a.gw.Limiter != nil {
+		s := a.gw.Limiter.Stats()
+		snap.Gateway = &metrics.GatewayStats{
+			MaxInflight: s.MaxInflight,
+			MaxQueued:   s.MaxQueued,
+			Inflight:    s.Inflight,
+			Queued:      s.Queued,
+			Admitted:    s.Admitted,
+			Rejected:    s.Rejected,
+		}
+	}
 	return snap
 }
 

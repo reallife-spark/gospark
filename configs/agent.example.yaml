@@ -44,6 +44,10 @@ gateway:
   listen: 127.0.0.1:8081
   upstream: http://127.0.0.1:8000
   model: Qwen/Qwen2.5-32B-Instruct
+  # Admission control (0 disables): bound concurrent inference and queue the rest.
+  max_inflight: 0
+  max_queued: 0
+  queue_wait: 0s
 
 mesh:
   interface: wg0

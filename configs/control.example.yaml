@@ -47,6 +47,12 @@ gateway:
   # Upstream path probed by /readyz and the probe timeout (defaults: /v1/models, 2s).
   ready_path: /v1/models
   probe_timeout: 2s
+  # Admission control: bound concurrent inference requests to the engine and
+  # queue the overflow. Edge admission, not batching — vLLM does continuous
+  # batching; this only keeps the engine from being oversubscribed. 0 disables.
+  max_inflight: 0
+  max_queued: 0
+  queue_wait: 0s
 
 # KV-routing seam: the compute-plane RadixAttention engine that knows which node
 # holds a prompt's cached KV prefix. Empty endpoint leaves placement to GPU

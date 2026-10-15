@@ -45,6 +45,18 @@ type Snapshot struct {
 	Draining bool
 	Counters Counters
 	Nodes    []Node
+	// Gateway is the admission-control state, or nil when no limit is set.
+	Gateway *GatewayStats
+}
+
+// GatewayStats is the gateway's admission-control view.
+type GatewayStats struct {
+	MaxInflight int
+	MaxQueued   int
+	Inflight    int
+	Queued      int64
+	Admitted    uint64
+	Rejected    uint64
 }
 
 // Node is one node's health and capacity.
@@ -110,6 +122,22 @@ func Write(w io.Writer, snap Snapshot) error {
 		metric(bw, c.name, nil, c.val)
 	}
 	bw.WriteByte('\n')
+
+	if g := snap.Gateway; g != nil {
+		help(bw, "gospark_gateway_inflight_requests", "Inference requests currently proxied to the upstream.", "gauge")
+		help(bw, "gospark_gateway_queued_requests", "Inference requests waiting for an admission slot.", "gauge")
+		help(bw, "gospark_gateway_max_inflight_requests", "Configured ceiling on concurrent inference requests.", "gauge")
+		help(bw, "gospark_gateway_max_queued_requests", "Configured ceiling on queued inference requests.", "gauge")
+		help(bw, "gospark_gateway_admitted_total", "Inference requests admitted through the limiter.", "counter")
+		help(bw, "gospark_gateway_rejected_total", "Inference requests refused by the limiter.", "counter")
+		metric(bw, "gospark_gateway_inflight_requests", nil, g.Inflight)
+		metric(bw, "gospark_gateway_queued_requests", nil, g.Queued)
+		metric(bw, "gospark_gateway_max_inflight_requests", nil, g.MaxInflight)
+		metric(bw, "gospark_gateway_max_queued_requests", nil, g.MaxQueued)
+		metric(bw, "gospark_gateway_admitted_total", nil, g.Admitted)
+		metric(bw, "gospark_gateway_rejected_total", nil, g.Rejected)
+		bw.WriteByte('\n')
+	}
 
 	if len(snap.Nodes) > 0 {
 		hasAuthorized, hasGPU, hasDevices := false, false, false

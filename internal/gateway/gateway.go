@@ -42,6 +42,10 @@ type Gateway struct {
 	// and refuse new inference requests, so a draining process quiesces while
 	// in-flight responses finish. Nil means never draining.
 	Draining func() bool
+
+	// Limiter, when non-nil, bounds concurrent inference requests to the
+	// upstream and queues the overflow (see Limiter). Nil admits everything.
+	Limiter *Limiter
 }
 
 const (
@@ -181,6 +185,15 @@ func (g *Gateway) handleRoute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) handleProxy(w http.ResponseWriter, r *http.Request) {
+	// Admission control applies to inference only; model discovery and the
+	// health routes must stay answerable while the engine is saturated.
+	release, err := g.Limiter.Acquire(r.Context())
+	if err != nil {
+		w.Header().Set("Retry-After", "1")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	defer release()
 	g.proxy(w, r)
 }
 

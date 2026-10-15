@@ -68,6 +68,16 @@ type GatewayConfig struct {
 	ReadyPath string `yaml:"ready_path"`
 	// ProbeTimeout bounds the /readyz upstream probe.
 	ProbeTimeout time.Duration `yaml:"probe_timeout"`
+	// MaxInflight bounds concurrent inference requests proxied to the upstream
+	// (admission control). <= 0 (the default) disables the limit. This is edge
+	// admission, not batching: the engine does continuous batching.
+	MaxInflight int `yaml:"max_inflight"`
+	// MaxQueued is how many requests may wait for a slot when the limit is hit;
+	// with 0 a full gateway refuses immediately. Ignored when MaxInflight <= 0.
+	MaxQueued int `yaml:"max_queued"`
+	// QueueWait bounds how long a queued request waits for a slot (0 waits until
+	// the request context is cancelled). Ignored when MaxInflight <= 0.
+	QueueWait time.Duration `yaml:"queue_wait"`
 }
 
 type MeshConfig struct {
@@ -343,6 +353,21 @@ func applyEnv(cfg *Config) {
 			cfg.Gateway.ProbeTimeout = d
 		}
 	}
+	if v := os.Getenv("GOSPARK_GATEWAY_MAX_INFLIGHT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Gateway.MaxInflight = n
+		}
+	}
+	if v := os.Getenv("GOSPARK_GATEWAY_MAX_QUEUED"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Gateway.MaxQueued = n
+		}
+	}
+	if v := os.Getenv("GOSPARK_GATEWAY_QUEUE_WAIT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Gateway.QueueWait = d
+		}
+	}
 	if v := os.Getenv("GOSPARK_MESH_INTERFACE"); v != "" {
 		cfg.Mesh.Interface = v
 	}
@@ -386,6 +411,15 @@ func (c Config) Validate() error {
 	}
 	if c.Gateway.ProbeTimeout < 0 {
 		return fmt.Errorf("config: gateway.probe_timeout must be >= 0")
+	}
+	if c.Gateway.MaxInflight < 0 {
+		return fmt.Errorf("config: gateway.max_inflight must be >= 0")
+	}
+	if c.Gateway.MaxQueued < 0 {
+		return fmt.Errorf("config: gateway.max_queued must be >= 0")
+	}
+	if c.Gateway.QueueWait < 0 {
+		return fmt.Errorf("config: gateway.queue_wait must be >= 0")
 	}
 	if err := validateEmbed(c.Embed); err != nil {
 		return err
