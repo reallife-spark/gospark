@@ -79,6 +79,14 @@ admin:
   # (the default) disables it entirely.
   listen: "127.0.0.1:8899"
 
+metrics:
+  # Prometheus surface. /admin/metrics is always served on the admin listener
+  # above; a non-empty listen here additionally starts a standalone server that
+  # answers /metrics and /healthz for a scrape. It carries node ids,
+  # authorization state and accelerator telemetry, so keep it on a trusted
+  # network interface. Empty (the default) disables the standalone listener.
+  listen: ""
+
 log:
   level: info
   format: json

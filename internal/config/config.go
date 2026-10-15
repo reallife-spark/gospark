@@ -27,6 +27,7 @@ type Config struct {
 	Embed     EmbedConfig     `yaml:"embed"`
 	KV        KVConfig        `yaml:"kv"`
 	Backup    BackupConfig    `yaml:"backup"`
+	Metrics   MetricsConfig   `yaml:"metrics"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -102,6 +103,16 @@ type RegistryConfig struct {
 // process holds the Master key — so it must stay on the loopback interface.
 // Empty disables the surface entirely (the default).
 type AdminConfig struct {
+	Listen string `yaml:"listen"`
+}
+
+// MetricsConfig exposes the control plane's read-only Prometheus surface. The
+// /admin/metrics route always serves it on the admin listener; a non-empty
+// Listen additionally starts a standalone server that answers /metrics and
+// /healthz, for a Prometheus scrape. It is disabled by default because the
+// snapshot carries node ids, authorization state and accelerator telemetry —
+// start it only on a trusted network interface.
+type MetricsConfig struct {
 	Listen string `yaml:"listen"`
 }
 
@@ -247,6 +258,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_ADMIN_LISTEN"); v != "" {
 		cfg.Admin.Listen = v
+	}
+	if v := os.Getenv("GOSPARK_METRICS_LISTEN"); v != "" {
+		cfg.Metrics.Listen = v
 	}
 	if v := os.Getenv("GOSPARK_COMPUTE_ENDPOINT"); v != "" {
 		cfg.Compute.Endpoint = v

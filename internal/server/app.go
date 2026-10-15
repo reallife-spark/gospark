@@ -268,6 +268,23 @@ func (a *App) Run(ctx context.Context) error {
 		}()
 	}
 
+	// Prometheus surface. Disabled unless an operator sets metrics.listen; when
+	// set it serves /metrics and /healthz for a scrape.
+	if addr := a.cfg.Metrics.Listen; addr != "" {
+		mSrv := &http.Server{Addr: addr, Handler: a.metricsHandler()}
+		go func() {
+			a.log.Info("metrics surface listening", "addr", addr)
+			if err := mSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				a.log.Error("metrics surface stopped", "err", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = mSrv.Shutdown(shutdownCtx)
+		}()
+	}
+
 	switch a.role {
 	case RoleControl:
 		if err := a.runControl(ctx); err != nil {

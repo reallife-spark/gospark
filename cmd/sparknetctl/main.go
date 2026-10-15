@@ -81,6 +81,7 @@ Usage:
   sparknetctl admin authorize -node ID -pubkey B64 -caps a,b [-role peer] [-overlay IP] [-ttl 8760h] [-addr URL]
   sparknetctl admin gpu    [-addr URL]
   sparknetctl admin health [-addr URL]
+  sparknetctl admin metrics [-addr URL]
   sparknetctl admin place  [-caps cluster-serve] [-min-free-mem BYTES] [-max-temp C] [-require-healthy] [-max-age DUR] [-addr URL]
   sparknetctl route      -prompt "..." [-caps a,b]
   sparknetctl encode-block -values 1,-2,0.5 -out BLOCK.canonical
@@ -288,7 +289,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place|kvcache")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place|kvcache|metrics")
 	}
 	switch args[0] {
 	case "show":
@@ -305,9 +306,19 @@ func cmdAdmin(args []string) error {
 		return cmdAdminPlace(args[1:])
 	case "kvcache":
 		return cmdAdminKVCache(args[1:])
+	case "metrics":
+		return cmdAdminMetrics(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place|kvcache)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place|kvcache|metrics)", args[0])
 	}
+}
+
+// cmdAdminMetrics fetches the control plane's Prometheus text exposition.
+func cmdAdminMetrics(args []string) error {
+	fs := flag.NewFlagSet("admin metrics", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	_ = fs.Parse(args)
+	return adminRequest(*addr, http.MethodGet, "/admin/metrics", nil)
 }
 
 // cmdAdminHealth asks a running control plane for the joined node-health view:

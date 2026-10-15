@@ -47,6 +47,7 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/registry/authorize", a.handleAdminAuthorize)
 	mux.HandleFunc("/admin/gpu", a.handleAdminGPU)
 	mux.HandleFunc("/admin/health", a.handleAdminHealth)
+	mux.HandleFunc("/admin/metrics", a.handleAdminMetrics)
 	mux.HandleFunc("/admin/placement", a.handleAdminPlacement)
 	mux.HandleFunc("/admin/kvcache", a.handleAdminKVCache)
 	return mux
