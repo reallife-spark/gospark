@@ -27,6 +27,7 @@ import (
 	// library into the binary.
 	_ "github.com/reallife-spark/goSpark/internal/gputel/dcgm"
 	_ "github.com/reallife-spark/goSpark/internal/gputel/nvml"
+	"github.com/reallife-spark/goSpark/internal/gputel/sim"
 )
 
 func main() {
@@ -47,6 +48,7 @@ func run() error {
 	busURL := fs.String("bus-url", "", "bus URL override (defaults to config bus.url; empty => in-memory)")
 	subjectRoot := fs.String("subject-root", "", "bus subject root override (defaults to config bus.subject_root)")
 	text := fs.Bool("text", false, "human-readable output instead of JSON (once mode)")
+	simFixture := fs.String("sim-fixture", "", "read a synthetic snapshot from this JSON fixture file (opt-in; also SPARKNET_GPU_FIXTURE)")
 	_ = fs.Parse(os.Args[1:])
 
 	cfg, err := config.Load(*cfgPath)
@@ -68,6 +70,12 @@ func run() error {
 		ov = cfg.Node.OverlayIPv4
 	}
 
+	if *simFixture != "" {
+		// Opt-in synthetic backend for hosts with no NVIDIA hardware; telemetry
+		// only, never authority. A no-op registration-wise if the environment
+		// already set SPARKNET_GPU_FIXTURE.
+		sim.SetFixture(*simFixture)
+	}
 	collector := gputel.Default()
 
 	if !*watch || *once {

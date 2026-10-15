@@ -34,6 +34,9 @@ build:
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-ingest ./cmd/sparknet-ingest
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-backup ./cmd/sparknet-backup
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-mcp ./cmd/sparknet-mcp
+	# CPU-only OpenAI-compatible vLLM stub: lets a machine with no GPU bring the
+	# whole node graph up with a real round-trip through the agent gateway.
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/stub-vllm ./cmd/stub-vllm
 
 # The GPU telemetry sidecar is the one cgo binary: it links NVML (go-nvlib) and
 # DCGM (go-dcgm) and degrades to "unavailable" on a host with no driver.
