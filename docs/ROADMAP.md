@@ -8,6 +8,15 @@ bridges, a Master orchestrator, knowledge sync, a health/compliance daemon, an
 operator CLI, a security gateway, a KV-cache router, backups, an employee
 Open WebUI, and an EU-AI-Act compliance mapping.
 
+A second, later Gemini session — **"Go and NVIDIA DGX Spark"** (captured at
+`peer-node/03_Sources/raxxar_raw/gemini-go-dgx-spark-seed.md`) — sits *on top of*
+that blueprint: it argues the Go-control/Python-compute split, sketches a
+four-phase build (vendor Go NVML/NVlib → telemetry daemon → inference gateway
+with queueing → Prometheus + systemd + drain) and surveys NVIDIA's OSS stack. It
+is a **seed, not a replacement**: the module map below stays keyed to the
+original blueprint, and the seed map further down records where each of its
+phases now stands.
+
 goSpark is **one slice of that blueprint**: the Go **control and service
 plane**. This document maps every module in the blueprint to who owns it, and
 says plainly what goSpark has, what is a deliberate seam, and what belongs
@@ -58,6 +67,28 @@ routes, records or transports is *control/service plane*.
 | Global distributed KV-cache fabric via RDMA/RoCE | compute plane | **seam**: `internal/transport` moves NVFP4 blocks over QUIC; RDMA/RoCE is host-layer |
 | Federated RadixAttention prefix tree | compute plane | **seam**: `internal/kvrouter` queries the engine's residency and `internal/router`/`internal/placement` route on it; the tree itself is compute-plane state (`compute/kv_cache_router.py`) |
 
+## Seed session map ("Go and NVIDIA DGX Spark")
+
+The seed's own build phases and its NVIDIA OSS survey, mapped to owners. The
+rule is unchanged: what decides, authorizes, routes, records or observes is
+goSpark; what runs tensors is compute plane.
+
+| Seed item | Owner | In goSpark |
+|---|---|---|
+| Phase 1 — vendor Go NVML/NVlib bindings | goSpark | done: `internal/gputel` (pure-Go core) + the two cgo packages `internal/gputel/nvml`, `internal/gputel/dcgm` (ADR 0004) |
+| Phase 2 — telemetry daemon | goSpark | done: `cmd/sparknet-gpu` (`-watch`) publishes NVML metrics + DCGM health on the health subject |
+| Phase 3 — inference gateway with **queueing + dynamic batching** | goSpark seam | gateway queueing done as **edge admission control** (`gateway.max_inflight`/`max_queued`; ADR 0012); **dynamic batching stays compute plane** (vLLM continuous batching) |
+| Phase 3 — loopback gRPC to the engine | fabric | followed the fabric's store-and-forward NATS/JetStream bus instead of gRPC (seam 5) |
+| Phase 4 — Prometheus `/metrics` | goSpark | done: `internal/metrics` + `/admin/metrics` + optional `metrics.listen` scrape surface (ADR 0011) |
+| Phase 4 — systemd + drain | goSpark | done: `deploy/sparknet-*.service` + graceful drain on SIGTERM / `POST /admin/drain` (ADR 0013) |
+| **vLLM** — OpenAI-compatible serving engine | compute plane | the reference engine stack `compute/docker-compose.vllm.yml`, tuned for DGX Spark; the Go gateway fronts it (ADR 0007) |
+| **TensorRT-LLM** — NVIDIA inference runtime | compute plane | not linked; an alternative engine behind the same `/v1/chat/completions` contract |
+| **Triton Inference Server** — multi-model serving | compute plane | not linked; a possible engine behind the same gateway contract |
+| **NVIDIA Dynamo** — disaggregated serving/scheduling | compute plane | not linked; disaggregated prefill/decode is compute-plane (concept map) |
+| **NVIDIA GPU Operator** — driver/container toolkit lifecycle | out of scope (host/ops) | — (the compose file assumes the toolkit is installed) |
+| **Run:ai / KAI Scheduler** — cluster GPU scheduling | out of scope (ops; goSpark seam) | node *selection* is goSpark's `internal/placement` (ADR 0005); cluster-wide preemption/fairness is the scheduler's job |
+| **NVIDIA Elements (Web Components / MCP / CLI)** | goSpark (MCP) + compute plane (UI) | the **read-only MCP server** `cmd/sparknet-mcp` exposes the admin surface as MCP tools (ADR 0014); Web Components/UI are compute plane |
+
 ## What goSpark already does (vs the blueprint)
 
 - **Control-plane core** — signed `TaskEnvelope` dispatch, fail-closed
@@ -91,10 +122,23 @@ routes, records or transports is *control/service plane*.
   or an unreachable engine degrades to telemetry placement (`internal/kvrouter`
   + the `ResidentNode` placement hint; ADR 0009).
 - **Operator CLI** — `cmd/sparknetctl` (identity, registry, admin, routing,
-  blocks, `admin gpu`, `admin place`, `admin health`, `admin kvcache`).
+  blocks, `admin gpu`, `admin place`, `admin health`, `admin kvcache`,
+  `admin metrics`, `admin drain`).
 - **Backup seam** — signed, content-addressed incremental snapshots with re-hash
   verify and restore, driven by `cmd/sparknet-backup` (no rsync, no shell;
   `internal/backup`; ADR 0010).
+- **Observability** — a Prometheus text-exposition surface (`internal/metrics`)
+  on `/admin/metrics` plus an optional standalone `metrics.listen` scrape
+  listener: control-plane counters, per-node health/authorization and
+  per-device accelerator telemetry, and the gateway's admission-control gauges
+  (ADR 0011).
+- **Operational lifecycle** — a drain state that refuses new work (dispatch,
+  gateway, agent tasks) while in-flight work finishes, triggered on SIGTERM or
+  `POST /admin/drain`, with hardened systemd units for the Go binaries in
+  `deploy/` (ADR 0013).
+- **MCP surface** — a dependency-free, read-only MCP stdio server
+  (`cmd/sparknet-mcp`) that exposes the admin routes as tools to agent tooling,
+  without exposing the mutating routes (ADR 0014).
 
 ## Deliberate seams (interface exists, body is elsewhere)
 
@@ -124,10 +168,10 @@ routes, records or transports is *control/service plane*.
 |---|---|---|
 | Art. 9 | Risk management | `cmd/sparknet-gpu` + `internal/gputel` thermal/memory/health telemetry; control-plane health `Registry` |
 | Art. 10 | Data governance & provenance | signed envelopes + `internal/ingest` (crawl/chunk); storage stays local, no cloud |
-| Art. 11 | Technical documentation | `docs/architecture.md`, `docs/adr/`, this roadmap |
-| Art. 12 | Record-keeping / logging | attested results, `internal/telemetry` counters, per-entry registry ledger, signed backup snapshots (`internal/backup`) |
+| Art. 11 | Technical documentation | `docs/architecture.md`, `docs/adr/`, this roadmap, and the operator-facing MCP tools (`cmd/sparknet-mcp`) |
+| Art. 12 | Record-keeping / logging | attested results, `internal/telemetry` counters, the Prometheus series (`/metrics`), per-entry registry ledger, signed backup snapshots (`internal/backup`) |
 | Art. 13 | Transparency | gateway/router attribution surfaces; UI labeling is compute plane |
-| Art. 14 | Human oversight | admin surface is a human-in-the-loop control; deployment policy is ops |
+| Art. 14 | Human oversight | admin surface is a human-in-the-loop control (authorize/revoke/**drain**); deployment policy is ops |
 | Art. 15 | Security & robustness | Ed25519 signed authority, fail-closed verification, QUIC transport |
 
 ## Not in this roadmap

@@ -126,7 +126,9 @@ counterpart. `GET /admin/health` joins the health registry, the authorization
 registry and the telemetry map into one per-node view — last report and age,
 serving/load/capabilities, `authorized`/`revoked`/`expires_at`, and a GPU
 summary — so an operator sees a node's liveness, standing and capacity together
-(`internal/server/health.go`).
+(`internal/server/health.go`). Two more routes ride the same loopback surface:
+`GET /admin/metrics` (Prometheus text exposition, ADR 0011) and
+`POST /admin/drain` (flip the process into drain, ADR 0013).
 
 ## Verification order (`internal/authz`)
 
@@ -324,6 +326,51 @@ reports the declared `gateway.model` when no upstream is set. `handleRoute`
 exposes the router decision without running the model. The gateway holds no model
 state and links no CUDA; the reference engine + Open WebUI stack is
 `compute/docker-compose.vllm.yml` (ADR 0007).
+
+It also bounds concurrency. An optional admission-control pool
+(`gateway.max_inflight`, `gateway.max_queued`, `gateway.queue_wait`) holds excess
+requests in a bounded queue with a wait deadline and answers `503` +
+`Retry-After` when it fills, so a burst cannot pile unbounded work onto the
+engine; health and `/v1/models` never consume a slot. Dynamic batching itself
+stays the engine's job (ADR 0012).
+
+## Observability, drain and the MCP surface
+
+Three operator-facing seams sit on top of the control/service plane; none change
+its authority model.
+
+- **Metrics** — `internal/metrics` renders a Prometheus text snapshot
+  (build info, drain state, control-plane counters, per-node health/authorization,
+  per-device accelerator telemetry, and the gateway's admission gauges). It is
+  served on the loopback `GET /admin/metrics` and, when `metrics.listen` is set,
+  on a standalone `/metrics` scrape listener that never carries authority (ADR
+  0011).
+- **Drain** — `App.BeginDrain()` is a one-way, idempotent state flipped on
+  `SIGTERM` or `POST /admin/drain`. While draining, dispatch, the gateway and
+  agent task handling all refuse *new* work (counted as refusals) and the
+  heartbeat advertises `serving=false`; in-flight work finishes within
+  `drainShutdownTimeout`. The `deploy/` systemd units wire this to the service
+  lifecycle (ADR 0013).
+- **MCP** — `cmd/sparknet-mcp` (`internal/mcp`) is a dependency-free, read-only
+  MCP stdio server that exposes the admin routes as tools for agent tooling. The
+  mutating routes are deliberately not tools, so MCP grants visibility, not
+  authority (ADR 0014).
+
+## Target hardware (DGX Spark / GB10)
+
+The reference host is an **NVIDIA DGX Spark**: a GB10 Grace Blackwell
+superchip — an ARM64 (`aarch64`) Grace CPU paired with a Blackwell GPU
+(`SM121`) over NVLink-C2C, with up to **128 GB** of coherent unified LPDDR5x
+memory and ConnectX-7 networking. Two consequences shape goSpark:
+
+- **It builds for `aarch64`.** The pure-Go core (`CGO_ENABLED=0`) and every
+  `cmd/*` binary are architecture-neutral; only the cgo GPU sidecar must be
+  built on the target.
+- **It never links CUDA.** GPU state is read through the driver's NVML and
+  DCGM libraries (which the GPU Operator/driver provide); the engine side (vLLM)
+  is what needs CUDA 12.8+/`SM121`. goSpark owns the control/service and
+  observability planes around that engine, not the tensor path (`compute/`).
+
 
 ## What is intentionally absent
 
