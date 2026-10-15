@@ -33,6 +33,7 @@ build:
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknetctl ./cmd/sparknetctl
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-ingest ./cmd/sparknet-ingest
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-backup ./cmd/sparknet-backup
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-mcp ./cmd/sparknet-mcp
 
 # The GPU telemetry sidecar is the one cgo binary: it links NVML (go-nvlib) and
 # DCGM (go-dcgm) and degrades to "unavailable" on a host with no driver.
