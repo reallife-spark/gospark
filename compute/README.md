@@ -36,6 +36,16 @@ Local sandbox operations (`arith`, `digest`) always run in-process and can never
 be shadowed. With no `compute.endpoint`, nothing is delegated and the closed
 sandbox is unchanged.
 
+## Reference daemons
+
+- `compute_worker.py` — the compute seam (`/v1/execute`) and the ingest seam
+  (`/v1/embeddings`, `/v1/models`).
+- `kv_cache_router.py` — the KV-routing seam: a RadixAttention residency index
+  (`/v1/kv/lookup`, `/v1/kv/register`, `/v1/kv/health`). goSpark's
+  `internal/kvrouter` is the client; when it reports a node holding a prompt's
+  cached prefix, the Go router prefers that node so the prefill is not paid
+  twice. Copy `kv-router.example.env` to `kv-router.env` (gitignored) to run it.
+
 ## Run
 
 ```sh

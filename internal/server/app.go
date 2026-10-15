@@ -19,6 +19,7 @@ import (
 	"github.com/reallife-spark/goSpark/internal/config"
 	"github.com/reallife-spark/goSpark/internal/gateway"
 	"github.com/reallife-spark/goSpark/internal/identity"
+	"github.com/reallife-spark/goSpark/internal/kvrouter"
 	"github.com/reallife-spark/goSpark/internal/kvtransfer"
 	"github.com/reallife-spark/goSpark/internal/router"
 	"github.com/reallife-spark/goSpark/internal/telemetry"
@@ -78,6 +79,12 @@ type App struct {
 	// executes the operations named in config.Compute.Operations. It is nil
 	// (the default) when the seam is disabled, leaving the pure sandbox.
 	compute compute.Executor
+
+	// kv, when non-nil, is the compute-plane RadixAttention engine that knows
+	// which node holds which cached KV prefix. It is advisory routing input: a
+	// hit lets the dispatcher prefer a node whose prefill is already paid for,
+	// and a miss or an unreachable engine degrades to telemetry placement.
+	kv kvrouter.Router
 
 	verifier  *authz.Verifier
 	masterPub ed25519.PublicKey
@@ -165,6 +172,18 @@ func New(opts Options) (*App, error) {
 			return nil, err
 		}
 		a.compute = ex
+	}
+
+	if opts.Config.KV.Endpoint != "" {
+		kv, err := kvrouter.NewHTTPRouter(kvrouter.Options{
+			Endpoint: opts.Config.KV.Endpoint,
+			Secret:   opts.Config.KV.Secret,
+			Timeout:  opts.Config.KV.Timeout,
+		})
+		if err != nil {
+			return nil, err
+		}
+		a.kv = kv
 	}
 
 	if opts.Role == RoleAgent && len(opts.MasterPublic) == 0 {

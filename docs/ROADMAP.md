@@ -42,7 +42,7 @@ routes, records or transports is *control/service plane*.
 | §3.7 `sparknet-cli` — operator CLI | goSpark | `cmd/sparknetctl` |
 | §3.8 `security_gateway.py` — IP whitelist / `X-Sparknet-Auth` gateway | goSpark | `internal/authz` (signed envelopes) + `internal/gateway`; mTLS mesh is **seam** |
 | §3.9 `provision_cluster.sh` — node provisioning playbook | out of scope (ops) | — |
-| §3.10 `kv_cache_router.py` — distributed RadixAttention + KV prefetch router | goSpark seam | `internal/router` (decisions) + `internal/kvtransfer` (NVFP4 codec/delta) + `internal/transport` (QUIC); the RadixAttention *tree* is **compute plane** |
+| §3.10 `kv_cache_router.py` — distributed RadixAttention + KV prefetch router | goSpark seam | `internal/kvrouter` (residency query) + `internal/router` (decisions) + `internal/kvtransfer` (NVFP4 codec/delta) + `internal/transport` (QUIC); the RadixAttention *tree* is **compute plane** (`compute/kv_cache_router.py` reference) |
 | §3.11 `sparknet_backup.py` — storage/knowledge backup daemon | goSpark seam | not built; the fabric's own signed-registry/ledger is the durable core |
 | §3.12 `docker-compose.webui.yml` — Open WebUI workstation | compute plane | **seam**: `internal/gateway` is the routing/auth endpoint it calls; Open WebUI runs in `compute/docker-compose.vllm.yml` (profile `webui`) pointed at the gateway |
 | §3.13 `sparknet_router_pipeline.py` — Open WebUI routing/auth pipeline | goSpark seam | `internal/router` + `internal/gateway`; persona/context injection is **compute plane** |
@@ -56,7 +56,7 @@ routes, records or transports is *control/service plane*.
 | Master→Department aggregation over secure gRPC | goSpark | bus (NATS/JetStream) carries signed tasks/results; gRPC is the blueprint's transport, the fabric chose a store-and-forward bus |
 | Disaggregated prefill/decode across the fleet | compute plane | — |
 | Global distributed KV-cache fabric via RDMA/RoCE | compute plane | **seam**: `internal/transport` moves NVFP4 blocks over QUIC; RDMA/RoCE is host-layer |
-| Federated RadixAttention prefix tree | compute plane | **seam**: `internal/router` matches/routes; the tree itself is compute-plane state |
+| Federated RadixAttention prefix tree | compute plane | **seam**: `internal/kvrouter` queries the engine's residency and `internal/router`/`internal/placement` route on it; the tree itself is compute-plane state (`compute/kv_cache_router.py`) |
 
 ## What goSpark already does (vs the blueprint)
 
@@ -94,7 +94,8 @@ routes, records or transports is *control/service plane*.
    (`internal/placement`: dispatch avoids a node that cannot hold the work and
    prefers more free VRAM); the token-count router's own edge/DGX/cluster
    escalation is unchanged, and per-node sharding is compute-plane.
-3. **RadixAttention / KV routing** — the codec and transport are real; the
+3. **RadixAttention / KV routing** — the codec and transport are real, and the
+   residency *query* is built (`internal/kvrouter` + the placement hint); the
    prefix tree and prefetch policy are compute-plane.
 4. **Knowledge index** — crawl, chunk, digest and the embeddings client exist
    (`internal/ingest` + `internal/embed` + `cmd/sparknet-ingest`); the vector

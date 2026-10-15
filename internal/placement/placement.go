@@ -46,6 +46,12 @@ type Requirement struct {
 	// RequireHealthy demands a GPU health verdict and that every reported GPU is
 	// "Healthy".
 	RequireHealthy bool
+	// ResidentNode, when set, names a node known (by the compute plane's
+	// RadixAttention engine) to already hold the prompt's cached KV prefix. If
+	// that node is eligible it is ranked first: sending the work where the
+	// prefill is already paid for avoids recomputing it. The hint is advisory —
+	// if the node is not a candidate it is ignored.
+	ResidentNode string
 }
 
 // Request is a Requirement plus policy bounds.
@@ -63,6 +69,7 @@ type Request struct {
 type Scored struct {
 	NodeID        string `json:"node_id"`
 	Eligible      bool   `json:"eligible"`
+	Resident      bool   `json:"kv_resident,omitempty"`
 	Reason        string `json:"reason,omitempty"`
 	HasTelemetry  bool   `json:"has_telemetry"`
 	Available     bool   `json:"available,omitempty"`
@@ -88,6 +95,7 @@ type row struct {
 	candidate Candidate
 	score     Scored
 	fresh     bool
+	resident  bool
 }
 
 // Select ranks candidates and chooses one.
@@ -130,6 +138,11 @@ func Select(candidates []Candidate, req Request) Decision {
 
 // better reports whether a ranks ahead of b. Both are known eligible.
 func better(a, b row) bool {
+	// A resident KV-cache prefix outranks every other consideration: the work
+	// skips the prefill it would otherwise pay for.
+	if a.resident != b.resident {
+		return a.resident
+	}
 	if a.fresh != b.fresh {
 		return a.fresh
 	}
@@ -159,6 +172,8 @@ func tempKey(s Scored) uint32 {
 
 func chooseReason(r row) string {
 	switch {
+	case r.resident:
+		return "KV-cache prefix resident; prefill already cached"
 	case r.fresh && r.score.GPUs > 0:
 		return "most free accelerator memory"
 	case r.fresh:
@@ -170,8 +185,8 @@ func chooseReason(r row) string {
 
 // evaluate scores one candidate against the request.
 func evaluate(c Candidate, req Request, now time.Time) row {
-	s := Scored{NodeID: c.NodeID, LoadPermille: c.LoadPermille}
-	r := row{candidate: c, score: s}
+	s := Scored{NodeID: c.NodeID, LoadPermille: c.LoadPermille, Resident: req.ResidentNode != "" && c.NodeID == req.ResidentNode}
+	r := row{candidate: c, score: s, resident: s.Resident}
 	if !c.Serving {
 		r.score.Reason = "not serving"
 		return r

@@ -19,8 +19,9 @@ import (
 const gib = uint64(1) << 30
 
 // placementControl builds a control plane whose registry authorizes node-a and
-// node-b for cluster-serve, runs it, and returns it with a cancel func.
-func placementControl(t *testing.T, shared bus.Bus) (*App, context.CancelFunc) {
+// node-b for cluster-serve, runs it, and returns it with a cancel func. Any
+// mutate funcs are applied to the config before the app is built.
+func placementControl(t *testing.T, shared bus.Bus, mutate ...func(*config.Config)) (*App, context.CancelFunc) {
 	t.Helper()
 	controlID, _ := identity.Generate("control", identity.RoleMaster)
 	agentA, _ := identity.Generate("node-a", identity.RolePeer)
@@ -32,6 +33,9 @@ func placementControl(t *testing.T, shared bus.Bus) (*App, context.CancelFunc) {
 	cfg := config.Default()
 	cfg.Gateway.Listen = "127.0.0.1:0"
 	cfg.Transport.Listen = "127.0.0.1:0"
+	for _, m := range mutate {
+		m(&cfg)
+	}
 	app, err := New(Options{Config: cfg, Identity: controlID, Role: RoleControl, Registry: doc, Bus: shared})
 	if err != nil {
 		t.Fatal(err)

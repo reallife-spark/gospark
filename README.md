@@ -32,6 +32,7 @@ while a GPU job is in flight.
 | `internal/gateway` | Go API gateway in front of a local vLLM upstream: SSE-aware proxy, `/readyz` readiness probe, `/v1/models` discovery |
 | `internal/ingest` | concurrent vault/git crawl + chunking for local RAG |
 | `internal/embed` | OpenAI-compatible embeddings client, the ingest seam to the compute plane (no model, no CUDA) |
+| `internal/kvrouter` | client for a compute-plane RadixAttention engine: asks which node holds a prompt's cached KV prefix (no model, no CUDA) |
 | `internal/bus` | NATS/JetStream-backed bus with an in-memory test double |
 | `internal/config` | YAML config + `GOSPARK_*` env overrides |
 | `internal/mesh` | WireGuard overlay inspection/re-route |
@@ -135,6 +136,7 @@ bin/sparknetctl admin revoke    -node node-a         # or -unrevoke to reinstate
 bin/sparknetctl admin gpu       -addr http://127.0.0.1:8899   # read-only GPU telemetry
 bin/sparknetctl admin health    -addr http://127.0.0.1:8899   # health + authz + GPU per node
 bin/sparknetctl admin place     -addr http://127.0.0.1:8899   # which node dispatch would pick
+bin/sparknetctl admin kvcache   -addr http://127.0.0.1:8899   # KV-residency routing seam status
 ```
 
 Each entry is signed **per entry** over the fabric's `signed_envelope_fields`
@@ -279,6 +281,32 @@ still usable — the seam is additive. The reference worker
 back to a deterministic hashed embedding when no engine is configured, so the
 pipeline can be exercised without a GPU. See
 [`docs/adr/0008-ingest-embedding-seam.md`](docs/adr/0008-ingest-embedding-seam.md).
+
+## KV-routing seam
+
+The blueprint's RadixAttention design keeps a prefix index of what the cluster
+has already computed, so a prompt whose prefix is cached is routed to the node
+that holds it and the prefill is not paid twice. The prefix tree is
+compute-plane (only the engine knows what it cached); *which node to send to* is
+a routing decision, so goSpark owns the query. `internal/kvrouter` asks the
+engine over `POST /v1/kv/lookup`; a hit becomes an advisory `ResidentNode` hint
+that placement ranks first among eligible nodes.
+
+```yaml
+# in a control plane's config
+kv:
+  endpoint: http://127.0.0.1:9100
+  secret: <shared with the daemon's SPARKNET_SHARED_SECRET>
+  timeout: 2s
+```
+
+A miss, a task with no prompt, or an unreachable engine all degrade to ordinary
+telemetry placement — the hint is never authority. Inspect it with
+`bin/sparknetctl admin kvcache [-prompt "…"]`. The reference RadixAttention
+daemon is [`compute/kv_cache_router.py`](compute/README.md); the NVFP4 blocks it
+indexes move over [`internal/kvtransfer`](docs/architecture.md) +
+`internal/transport`. See
+[`docs/adr/0009-kv-routing-seam.md`](docs/adr/0009-kv-routing-seam.md).
 
 ## Contract provenance
 

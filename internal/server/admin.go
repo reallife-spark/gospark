@@ -48,6 +48,7 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/gpu", a.handleAdminGPU)
 	mux.HandleFunc("/admin/health", a.handleAdminHealth)
 	mux.HandleFunc("/admin/placement", a.handleAdminPlacement)
+	mux.HandleFunc("/admin/kvcache", a.handleAdminKVCache)
 	return mux
 }
 
@@ -102,6 +103,49 @@ func (a *App) handleAdminPlacement(w http.ResponseWriter, r *http.Request) {
 		req.MaxTelemetryAge = d
 	}
 	writeAdminJSON(w, http.StatusOK, a.Place(req, capability))
+}
+
+// handleAdminKVCache serves GET /admin/kvcache: the status of the
+// compute-plane RadixAttention seam, and — with ?prompt= — the node it reports
+// as holding that prompt's cached prefix. It is read-only; the prefix tree
+// itself stays in the compute plane.
+func (a *App) handleAdminKVCache(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	type view struct {
+		Configured bool   `json:"configured"`
+		Endpoint   string `json:"endpoint,omitempty"`
+		Healthy    bool   `json:"healthy"`
+		Error      string `json:"error,omitempty"`
+		Prompt     string `json:"prompt,omitempty"`
+		Node       string `json:"node,omitempty"`
+		Matched    int    `json:"matched_tokens,omitempty"`
+		PrefixHash string `json:"prefix_hash,omitempty"`
+	}
+	var out view
+	if a.kv == nil {
+		writeAdminJSON(w, http.StatusOK, out)
+		return
+	}
+	out.Configured = true
+	out.Endpoint = a.kv.Name()
+	if err := a.kv.Health(r.Context()); err != nil {
+		out.Error = err.Error()
+	} else {
+		out.Healthy = true
+	}
+	if prompt := r.URL.Query().Get("prompt"); prompt != "" {
+		out.Prompt = prompt
+		res, ok, err := a.KVLookup(r.Context(), prompt)
+		if err != nil {
+			out.Error = err.Error()
+		} else if ok {
+			out.Node, out.Matched, out.PrefixHash = res.Node, res.MatchedTokens, res.PrefixHash
+		}
+	}
+	writeAdminJSON(w, http.StatusOK, out)
 }
 
 // truthy accepts the usual on-flags for a query bool.

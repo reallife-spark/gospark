@@ -35,6 +35,39 @@ func TestRanksByFreeMemory(t *testing.T) {
 	}
 }
 
+// TestResidentNodePreferred proves a KV-cache residency hint outranks free
+// memory: the resident node is chosen even though another node has far more
+// free accelerator memory, because its prefill is already cached.
+func TestResidentNodePreferred(t *testing.T) {
+	cands := []Candidate{
+		{NodeID: "node-a", Serving: true, Telemetry: tel(100, gpu(80*giB, 70*giB, 40, 10, "Healthy"))}, // 10 GiB free
+		{NodeID: "node-b", Serving: true, Telemetry: tel(100, gpu(80*giB, 10*giB, 40, 10, "Healthy"))}, // 70 GiB free
+	}
+	dec := Select(cands, Request{Now: time.Unix(120, 0), Requirement: Requirement{ResidentNode: "node-a"}})
+	if dec.NodeID != "node-a" {
+		t.Fatalf("chose %q, want node-a (resident)", dec.NodeID)
+	}
+	if !dec.Ranked[0].Resident {
+		t.Fatalf("chosen node not marked resident: %+v", dec.Ranked[0])
+	}
+	if dec.Reason != "KV-cache prefix resident; prefill already cached" {
+		t.Fatalf("reason = %q", dec.Reason)
+	}
+}
+
+// TestResidentHintIgnoredWhenNotCandidate proves the hint is advisory: a
+// resident node that is not a candidate changes nothing.
+func TestResidentHintIgnoredWhenNotCandidate(t *testing.T) {
+	cands := []Candidate{
+		{NodeID: "node-a", Serving: true, Telemetry: tel(100, gpu(80*giB, 70*giB, 40, 10, "Healthy"))},
+		{NodeID: "node-b", Serving: true, Telemetry: tel(100, gpu(80*giB, 10*giB, 40, 10, "Healthy"))},
+	}
+	dec := Select(cands, Request{Now: time.Unix(120, 0), Requirement: Requirement{ResidentNode: "node-z"}})
+	if dec.NodeID != "node-b" {
+		t.Fatalf("chose %q, want node-b (resident hint for absent node ignored)", dec.NodeID)
+	}
+}
+
 func TestTelemetryBeatsNoTelemetry(t *testing.T) {
 	cands := []Candidate{
 		{NodeID: "blind", Serving: true},

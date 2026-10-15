@@ -203,6 +203,29 @@ seam is additive and the GPU-free path is unchanged. The reference worker serves
 embedding when `SPARKNET_EMBED_ENDPOINT` is unset, so the pipeline is testable
 without an engine (ADR 0008).
 
+## KV-routing seam (`internal/kvrouter`)
+
+The blueprint's RadixAttention design keeps a distributed prefix index so a
+prompt whose prefix the cluster already computed is routed to the node holding
+that KV cache instead of recomputing the prefill. The prefix tree and the
+prefetch policy are compute-plane — only the engine knows what it cached — but
+*which node to send a prompt to* is a routing decision, and that is goSpark's.
+
+`internal/kvrouter` is the client for that decision: it POSTs a prompt to the
+engine's `/v1/kv/lookup` (`X-Sparknet-Auth`, a 2s default timeout because the
+call sits on the routing path) and reads back the resident node and matched
+prefix length. `App.PlaceAndDispatch` extracts a best-effort `prompt` from the
+task's params, and a residency hit becomes an advisory `placement.Requirement.
+ResidentNode` that ranks that node first among the eligible candidates. A miss,
+a task with no prompt, or an unreachable engine all degrade to telemetry
+placement — the hint is input to a decision, never authority. `GET /admin/
+kvcache` and `sparknetctl admin kvcache` expose it.
+
+`internal/kvrouter` links no model, attention kernel or CUDA. The NVFP4 blocks
+the tree indexes are the transport's job: `internal/kvtransfer` is the codec and
+`internal/transport` streams the blocks over HTTP/3. The reference RadixAttention
+daemon is `compute/kv_cache_router.py` (ADR 0009).
+
 ## Configuration
 
 One YAML file plus `GOSPARK_*` env overrides (`internal/config`). Defaults are
@@ -262,6 +285,11 @@ load, and finally node id — deterministic. `App.Place` and `App.PlaceAndDispat
 expose it; `GET /admin/placement` reports it read-only, and
 `sparknet-control -dispatch auto` polls it (after `App.Ready()`) until a node is
 eligible, then dispatches.
+
+A `ResidentNode` hint (from the KV-routing seam) is ranked ahead of every
+telemetry axis when that node is eligible, so a node whose prefill is already
+cached wins even if another node has more free memory. The hint is advisory:
+an ineligible or absent resident changes nothing.
 
 ## Serving seam (`internal/gateway`)
 

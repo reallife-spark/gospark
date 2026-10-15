@@ -25,6 +25,7 @@ type Config struct {
 	Admin     AdminConfig     `yaml:"admin"`
 	Compute   ComputeConfig   `yaml:"compute"`
 	Embed     EmbedConfig     `yaml:"embed"`
+	KV        KVConfig        `yaml:"kv"`
 	Log       LogConfig       `yaml:"log"`
 }
 
@@ -134,6 +135,19 @@ type EmbedConfig struct {
 	Timeout time.Duration `yaml:"timeout"`
 }
 
+// KVConfig points the router at a compute-plane RadixAttention engine that
+// knows which node holds which cached KV prefix. Empty Endpoint (the default)
+// leaves placement to GPU telemetry alone; the residency hint is advisory and
+// degrades to telemetry placement when the engine is unreachable.
+type KVConfig struct {
+	// Endpoint is the RadixAttention daemon base URL.
+	Endpoint string `yaml:"endpoint"`
+	// Secret is sent as X-Sparknet-Auth. Empty sends no header.
+	Secret string `yaml:"secret"`
+	// Timeout bounds one lookup. It sits on the routing path, so keep it short.
+	Timeout time.Duration `yaml:"timeout"`
+}
+
 // Default returns the built-in defaults before any file or env override.
 func Default() Config {
 	return Config{
@@ -158,6 +172,9 @@ func Default() Config {
 		Embed: EmbedConfig{
 			Batch:   32,
 			Timeout: 60 * time.Second,
+		},
+		KV: KVConfig{
+			Timeout: 2 * time.Second,
 		},
 	}
 }
@@ -244,6 +261,17 @@ func applyEnv(cfg *Config) {
 			cfg.Embed.Timeout = d
 		}
 	}
+	if v := os.Getenv("GOSPARK_KV_ENDPOINT"); v != "" {
+		cfg.KV.Endpoint = v
+	}
+	if v := os.Getenv("GOSPARK_KV_SECRET"); v != "" {
+		cfg.KV.Secret = v
+	}
+	if v := os.Getenv("GOSPARK_KV_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.KV.Timeout = d
+		}
+	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v
 	}
@@ -310,6 +338,9 @@ func (c Config) Validate() error {
 	}
 	if err := validateEmbed(c.Embed); err != nil {
 		return err
+	}
+	if c.KV.Timeout < 0 {
+		return fmt.Errorf("config: kv.timeout must be >= 0")
 	}
 	return nil
 }

@@ -48,6 +48,14 @@ gateway:
   ready_path: /v1/models
   probe_timeout: 2s
 
+# KV-routing seam: the compute-plane RadixAttention engine that knows which node
+# holds a prompt's cached KV prefix. Empty endpoint leaves placement to GPU
+# telemetry alone; the hint is advisory and degrades gracefully.
+kv:
+  endpoint: ""
+  secret: ""
+  timeout: 2s
+
 mesh:
   interface: wg0
   wg_config: /etc/wireguard/wg0.conf

@@ -288,7 +288,7 @@ func cmdRegistryRevoke(args []string) error {
 // mutates the live registry the way `registry revoke` mutates one on disk.
 func cmdAdmin(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place")
+		return fmt.Errorf("admin: expected show|revoke|authorize|gpu|health|place|kvcache")
 	}
 	switch args[0] {
 	case "show":
@@ -303,8 +303,10 @@ func cmdAdmin(args []string) error {
 		return cmdAdminHealth(args[1:])
 	case "place":
 		return cmdAdminPlace(args[1:])
+	case "kvcache":
+		return cmdAdminKVCache(args[1:])
 	default:
-		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place)", args[0])
+		return fmt.Errorf("admin: unknown action %q (want show|revoke|authorize|gpu|health|place|kvcache)", args[0])
 	}
 }
 
@@ -343,6 +345,21 @@ func cmdAdminPlace(args []string) error {
 		q.Set("max_age", maxAge.String())
 	}
 	return adminRequest(*addr, http.MethodGet, "/admin/placement?"+q.Encode(), nil)
+}
+
+// cmdAdminKVCache asks a running control plane for the RadixAttention seam's
+// status; with -prompt it also asks which node holds that prompt's cached
+// prefix.
+func cmdAdminKVCache(args []string) error {
+	fs := flag.NewFlagSet("admin kvcache", flag.ExitOnError)
+	addr := fs.String("addr", "http://127.0.0.1:8899", "control-plane admin base URL")
+	prompt := fs.String("prompt", "", "prompt whose cached-prefix residency to query")
+	_ = fs.Parse(args)
+	path := "/admin/kvcache"
+	if *prompt != "" {
+		path += "?" + url.Values{"prompt": {*prompt}}.Encode()
+	}
+	return adminRequest(*addr, http.MethodGet, path, nil)
 }
 
 func cmdAdminGPU(args []string) error {
