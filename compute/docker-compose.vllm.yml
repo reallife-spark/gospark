@@ -12,6 +12,11 @@
 #   docker compose -f docker-compose.vllm.yml --profile webui up -d
 #
 # Requires the NVIDIA container toolkit. Adjust --model / HF token as needed.
+#
+# Target hardware is a DGX Spark (GB10, Blackwell SM121, 128 GB unified LPDDR5x,
+# ARM64 host). That needs a vLLM build with CUDA 12.8+/SM121 support; pin the
+# image tag rather than tracking :latest if reproducibility matters. The engine
+# flags below are the DGX-Spark reference defaults and every one is overridable.
 
 services:
   vllm:
@@ -28,6 +33,19 @@ services:
       - "8000"
       # Expose the KV-cache/prefix metrics a RadixAttention router can consume.
       - --enable-prefix-caching
+      # DGX Spark (GB10 / SM121) tuning. Unified LPDDR5x is shared with the host,
+      # so memory utilisation stays below 1.0; 128K context and a 16-token KV
+      # block suit the Blackwell memory system; fp8 is the default quantisation.
+      # Change VLLM_QUANTIZATION per checkpoint (set it to a supported scheme for
+      # the model, e.g. bfloat16, if fp8 is not appropriate).
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEM_UTIL:-0.90}
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-131072}
+      - --block-size
+      - ${VLLM_BLOCK_SIZE:-16}
+      - --quantization
+      - ${VLLM_QUANTIZATION:-fp8}
     ports:
       - "127.0.0.1:8000:8000"
     environment:

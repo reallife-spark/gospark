@@ -76,6 +76,28 @@ up.
 unreachable, so the bridge is testable anywhere. Set `SPARKNET_REQUIRE_VLLM=1`
 to make an unreachable engine a hard failure.
 
+## Serving stack (vLLM on DGX Spark)
+
+`docker-compose.vllm.yml` is the reference serving stack: the vLLM OpenAI engine
+that `gateway.upstream` fronts, plus an optional Open WebUI profile. It targets a
+DGX Spark (GB10 / Blackwell SM121, 128 GB unified LPDDR5x, ARM64) and passes the
+engine's DGX-Spark tuning flags, each overridable by environment:
+
+| Flag | Default | Env |
+|---|---|---|
+| `--gpu-memory-utilization` | `0.90` | `VLLM_GPU_MEM_UTIL` |
+| `--max-model-len` | `131072` | `VLLM_MAX_MODEL_LEN` |
+| `--block-size` | `16` | `VLLM_BLOCK_SIZE` |
+| `--quantization` | `fp8` | `VLLM_QUANTIZATION` |
+
+Set `VLLM_MODEL` / `HF_TOKEN` too. The image must carry CUDA 12.8+/SM121; pin a
+tag rather than tracking `:latest` if reproducibility matters.
+
+```sh
+docker compose -f docker-compose.vllm.yml up -d vllm
+docker compose -f docker-compose.vllm.yml --profile webui up -d   # optional UI
+```
+
 ## Production
 
 `sparknet-compute.service` runs the worker under systemd, hardened and
