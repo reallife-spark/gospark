@@ -1,5 +1,15 @@
 # Reference compute-plane serving stack: vLLM + Open WebUI.
 #
+# DEPRECATED FOR THE DGX SPARK NODE — superseded by the sparknet fabric's node
+# image. This file stands up *engine + WebUI only* and expects you to run the Go
+# gateway yourself on the host. The fabric now ships one image that does the
+# whole node — vLLM, the goSpark control/service plane, the Python compute plane,
+# the NATS bus and the fabric precontext chat template — driven by
+# `spark.docker` + `spark.compose.yml` and `sparknet-node-setup.sh`. Use that for
+# a Spark; keep this file for the bare Python/CUDA serving stack it has always
+# been (§3.2 departmental serving, §3.12 Open WebUI), or as the minimal reference
+# when the full node image is more than you want.
+#
 # goSpark's Go gateway fronts the vLLM engine here (gateway.upstream in the node
 # config). Nothing in this file is linked into the Go binaries; it is the Python/
 # CUDA side of §3.2 (departmental vLLM serving) and §3.12 (Open WebUI), reached
