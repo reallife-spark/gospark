@@ -26,6 +26,12 @@ jobs:
   gate:
     name: pre-merge gate
     runs-on: ubuntu-latest
+    # A runner has no NVIDIA C stack (no libdcgm/NVML headers), so the gate
+    # builds the pure-Go surface: the GPU sidecar packages fall back to their
+    # _stub.go companions, which is the same path `make build` already takes
+    # (CGO_ENABLED=0) and the same one a bare clone gets.
+    env:
+      CGO_ENABLED: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -35,6 +41,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      # Installed at the same version the local gate uses so a config mismatch
+      # cannot make the two disagree.
+      - name: Install golangci-lint (pinned)
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # One step, one command: the Makefile owns the gate's vocabulary
       # (fmt-check, vet, test-race) and this step runs it.

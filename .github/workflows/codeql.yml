@@ -26,6 +26,11 @@ jobs:
   analyze:
     name: analyze (go)
     runs-on: ubuntu-latest
+    # Same reason as the gate: a runner has no libdcgm/NVML headers, so the
+    # extractor builds the pure-Go surface and the GPU sidecars fall back to
+    # their _stub.go companions.
+    env:
+      CGO_ENABLED: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

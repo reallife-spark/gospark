@@ -65,9 +65,18 @@ build-gpu:
 test:
 	$(GO) test $(PKGS)
 
+# The race detector needs cgo, so a CGO_ENABLED=0 build (a CI runner with no
+# NVIDIA C stack, or any bare clone) falls back to plain tests and says so
+# rather than failing on -race itself. Locally CGO is on and the race detector
+# still runs.
 .PHONY: test-race
 test-race:
-	$(GO) test -race $(PKGS)
+	@if [ "$(CGO_ENABLED)" = "0" ]; then \
+		echo "test-race: race detector SKIPPED — CGO_ENABLED=0, running plain tests"; \
+		$(GO) test $(PKGS); \
+	else \
+		$(GO) test -race $(PKGS); \
+	fi
 
 # The NATS integration tests skip themselves when nats-server is absent; this
 # target names them explicitly so a missing server is visible rather than silent.

@@ -1,3 +1,7 @@
+github.com/NVIDIA/go-dcgm v1.4701.2 h1:MHnZPnrAGogIOXyu+RlfwMq7Y44gbI0/WeA5N4hwJMs=
+github.com/NVIDIA/go-dcgm v1.4701.2/go.mod h1:EmLmw9um5xso8pa7uUeDoYqpUNcjtvhMbv71jq/8hpg=
+github.com/NVIDIA/go-nvlib v0.9.0 h1:GKLIvLJ0uhCtTLLZp2Q8QIDRxOYH45MM4Y5OO3U5Rho=
+github.com/NVIDIA/go-nvlib v0.9.0/go.mod h1:7mzx9FSdO9fXWP9NKuZmWkCwhkEcSWQFe2tmFwtLb9c=
 github.com/NVIDIA/go-nvml v0.13.0-1 h1:OLX8Jq3dONuPOQPC7rndB6+iDmDakw0XTYgzMxObkEw=
 github.com/NVIDIA/go-nvml v0.13.0-1/go.mod h1:+KNA7c7gIBH7SKSJ1ntlwkfN80zdx8ovl4hrK3LmPt4=
 github.com/bits-and-blooms/bitset v1.25.0 h1:0Ro0qF4abCkM6SqWPVj29sFhAbMPAZpaDD7xhJ10beM=
