@@ -1,0 +1,48 @@
+# goSpark
+
+> goSpark is the Go control and service plane for SparkNet: identity,
+> capability verification, signed task dispatch, placement, routing, the API
+> gateway, and the NVFP4 KV-block data plane. It is a sibling to the `sparknet`
+> fabric — Go for control/service, Python/CUDA for compute (ADR 0001).
+
+Read `README.md` for the package map and every command with its example,
+`docs/architecture.md` for the mechanisms, `docs/adr/` for settled decisions,
+and `docs/ROADMAP.md` for what is next. `CONTRIBUTING.md` states the two rules
+that are not style (the compute boundary and fail-closed authority).
+
+## Commands
+
+- Build: `make build` (pure Go, `CGO_ENABLED=0`); `make build-gpu` (the one cgo
+  sidecar)
+- Gate: `make ci` (`fmt-check` + `vet` + `test-race`); `make lint` (build +
+  vet + fmt-check); `make test`, `make test-race`, `make test-nats`
+- Bus: `make nats-dev` (throwaway JetStream on 127.0.0.1:4222)
+- Secrets: `make keys-check`
+- Operator CLI: `bin/sparknetctl` — keygen, fingerprint, capability, route,
+  registry sign/verify/revoke, live `admin` surface, block decode/send
+
+## Layout
+
+- `cmd/` — the binaries: `sparknet-control` (Master role), `sparknet-agent`
+  (node), `sparknetctl` (operator CLI), `sparknet-gpu` (cgo telemetry sidecar),
+  `sparknet-ingest`, `sparknet-backup`, `sparknet-mcp`, `stub-vllm` (CPU tier)
+- `internal/authz` — fail-closed verification of signed envelopes, the
+  capability vocabulary, the signed node registry
+- `internal/identity` — Ed25519 node identity + canonical fingerprint
+- `internal/placement` — pure telemetry-aware dispatch (no bus, registry, GPU)
+- `internal/gputel` — pure-Go telemetry types and wire projection (no GPU link)
+- `internal/compute`, `internal/embed`, `internal/kvrouter` — the compute-plane
+  seams (no model, no CUDA)
+- `internal/gateway`, `internal/router`, `internal/transport`,
+  `internal/kvtransfer` — serving, routing and the KV data plane
+- `internal/bus` — NATS/JetStream with an in-memory test double
+- `proto/sparknet/v1` — the on-wire contract; `spec/sparknet` — read-only
+  contract snapshots from the fabric (see its `PROVENANCE.md`)
+
+## Boundaries
+
+The pure-Go core must build and decide authorization without a GPU, a model or
+the compute plane. Telemetry is never authority. Authority is key possession:
+the signer signs, the verifier verifies and refuses on the first failure. No
+secrets are tracked. The fabric's `STYLE_GUIDE.md` (sibling `sparknet`
+repository) governs commits, shell, Makefiles, CI and release for both.

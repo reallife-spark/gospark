@@ -1,0 +1,3 @@
+{"q": "2+2", "a": "[vllm-stub] model=sparknet-stub prompt_sha256=dfe89d0b"}
+{"q": "capital of France", "a": "[vllm-stub] model=sparknet-stub prompt_sha256=cf4fd63f"}
+{"q": "3*3", "a": "[vllm-stub] model=sparknet-stub prompt_sha256=9168007b"}

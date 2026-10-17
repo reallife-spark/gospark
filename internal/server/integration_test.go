@@ -137,10 +137,7 @@ func TestControlAgentEndToEnd(t *testing.T) {
 
 	// And the control plane counted it as attested.
 	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if control.counters.Snapshot().ResultsAttested >= 1 {
-			break
-		}
+	for control.counters.Snapshot().ResultsAttested < 1 {
 		if time.Now().After(deadline) {
 			t.Fatalf("control plane never attested the result: %+v", control.counters.Snapshot())
 		}

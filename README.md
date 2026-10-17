@@ -56,11 +56,26 @@ computation was *permitted*.
 make build          # bin/sparknet-control, bin/sparknet-agent, bin/sparknetctl (CGO_ENABLED=0)
 make build-gpu      # bin/sparknet-gpu — the cgo GPU sidecar (links NVML/DCGM)
 make test           # all tests
-make ci             # fmt-check + vet + race tests
+make lint           # build + vet + fmt-check + golangci-lint (.golangci.yml)
+make ci             # fmt-check + vet + golangci-lint + race tests  ← the gate
+make eval           # lm-eval (pinned clone) against the stub tier (see below)
 ```
 
 Requires Go 1.27+. The core binaries build with `CGO_ENABLED=0` (ADR 0001); the
-GPU sidecar is the only cgo binary (ADR 0004).
+GPU sidecar is the only cgo binary (ADR 0004). `golangci-lint` is a soft
+dependency: `make lint`/`make ci` report a SKIP when it is not installed
+(`go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`).
+
+### Evaluation gate (`make eval`)
+
+`make eval` drives [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness)
+against an OpenAI-compatible endpoint. It defaults to the CPU stub tier
+(`cmd/stub-vllm`): the pinned task `eval/spark_smoke.yaml` targets the stub's
+deterministic echo, so `exact_match = 1.0` proves the request/response/metric
+chain end to end. Set `EVAL_BASE_URL=http://host:port/v1/completions` to score a
+real vLLM instead. lm-eval is used from a pinned clone's venv, not a tracked
+dependency of this module, so a missing clone is an honest SKIP (see the target's
+setup hint).
 
 ## Run a two-process demo (in-memory bus)
 

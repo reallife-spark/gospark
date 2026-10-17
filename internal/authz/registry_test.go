@@ -11,8 +11,6 @@ import (
 	"github.com/reallife-spark/goSpark/internal/identity"
 )
 
-func iso(t time.Time) string { return t.UTC().Format(time.RFC3339) }
-
 // authzEntry mints a signed entry for id granting caps, valid now.
 func authzEntry(t *testing.T, master, id *identity.Identity, caps ...authz.Capability) apiv1.NodeAuthorization {
 	t.Helper()

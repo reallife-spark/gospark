@@ -112,9 +112,9 @@ func VerifyResult(executorPub []byte, env *apiv1.ResultEnvelope) error {
 	if env == nil {
 		return errors.New("authz: nil result envelope")
 	}
-	if !IsKnown(Capability(env.Operation)) && env.Operation != "" {
-		// operation is not a capability; only sanity-check the field is present.
-	}
+	// env.Operation is not validated here: a result's operation names a compute
+	// task, not a capability, so it is carried verbatim into the signed bytes
+	// (CanonicalBytes below) and proven by signature rather than by a grant.
 	msg, err := apiv1.CanonicalBytes(env)
 	if err != nil {
 		return fmt.Errorf("authz: canonicalise: %w", err)

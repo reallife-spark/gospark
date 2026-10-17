@@ -1,0 +1,42 @@
+# goSpark's GitHub gate — a MIRROR of the local `make ci`, not a second source
+# of truth. The local gate (fmt-check + vet + test-race) is what a merge must
+# pass; this runs the same command on a PR for a status check and a second
+# opinion. If the two disagree, the LOCAL gate wins: fix this workflow, never
+# the Makefile (decision A5, PLAN Step 48).
+#
+# Actions are pinned to a full commit SHA, never a moving tag, matching the dsx
+# practice recorded in the fabric's
+# references/nvidia-dsx-standard-practice.md (Step 48).
+name: gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: pre-merge gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # One step, one command: the Makefile owns the gate's vocabulary
+      # (fmt-check, vet, test-race) and this step runs it.
+      - name: Run the local pre-merge gate
+        run: make ci

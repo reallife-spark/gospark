@@ -67,7 +67,7 @@ func TestEmbedChunksPairsInOrder(t *testing.T) {
 		t.Fatalf("got %d embeddings", len(out))
 	}
 	for i, ec := range out {
-		if ec.Chunk.Index != i {
+		if ec.Index != i {
 			t.Errorf("chunk %d out of order: %+v", i, ec.Chunk)
 		}
 		if len(ec.Vector) != 3 || ec.Vector[0] != float32(i+1) {

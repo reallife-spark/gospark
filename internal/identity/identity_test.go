@@ -29,7 +29,8 @@ func TestGenerateSignVerify(t *testing.T) {
 func TestFingerprintStableAndDistinct(t *testing.T) {
 	a, _ := identity.Generate("node-a", identity.RolePeer)
 	b, _ := identity.Generate("node-b", identity.RolePeer)
-	if a.Fingerprint() != a.Fingerprint() {
+	first, second := a.Fingerprint(), a.Fingerprint()
+	if first != second {
 		t.Fatal("fingerprint must be stable")
 	}
 	if a.Fingerprint() == b.Fingerprint() {

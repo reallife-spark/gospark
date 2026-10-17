@@ -1,0 +1,44 @@
+# goSpark lint gate — mirrors the dsx-ai-factory Go house style (inventory
+# `references/nvidia-dsx-standard-practice.md`, adoption row #2 / topograph's
+# config): vet, staticcheck-class analysis, unused, ineffassign, with
+# gofmt/goimports as formatters.
+#
+# `default: none` keeps the enabled set explicit: a golangci-lint upgrade then
+# cannot widen the gate silently. The module pins the Go toolchain in go.mod.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+    paths:
+      - bin
+      - vendor
+      - third_party$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/reallife-spark/goSpark
+  exclusions:
+    generated: lax
+    paths:
+      - bin
+      - vendor
+      - third_party$

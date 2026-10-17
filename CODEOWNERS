@@ -1,0 +1,3 @@
+# Default owner for everything in this repository.
+# GitHub falls back to this rule when a path has no more specific entry.
+* @reallife-spark

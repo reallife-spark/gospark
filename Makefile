@@ -3,6 +3,21 @@
 GO ?= go
 BIN := bin
 PKGS := ./...
+GOLANGCI_LINT ?= golangci-lint
+
+# Evaluation (make eval) — reference adoption of lm-evaluation-harness, driven
+# from the pinned clone rather than a tracked dependency (fabric Step 51a). Point
+# EVAL_BASE_URL at any OpenAI-compatible /v1/completions endpoint to score a real
+# model; leave it empty to self-host the deterministic CPU stub tier.
+LMEVAL_DIR ?= /mnt/nvme/github/lm-evaluation-harness
+LMEVAL_PY ?= $(LMEVAL_DIR)/.venv/bin/python
+EVAL_BASE_URL ?=
+EVAL_PORT ?= 18443
+EVAL_MODEL ?= sparknet-stub
+EVAL_TASKS ?= spark_smoke
+EVAL_INCLUDE ?= eval
+EVAL_LIMIT ?= 3
+EVAL_OUT ?= .state/eval
 
 .PHONY: help
 help:
@@ -17,8 +32,9 @@ help:
 	@echo "  make vet          go vet ./..."
 	@echo "  make fmt          gofmt -w ."
 	@echo "  make fmt-check    fail if any file needs gofmt"
-	@echo "  make lint         build + vet + fmt-check (the gate)"
-	@echo "  make ci           fmt-check + vet + test-race"
+	@echo "  make lint         build + vet + fmt-check + golangci-lint (the gate)"
+	@echo "  make ci           fmt-check + vet + lint + test-race"
+	@echo "  make eval         drive lm-eval (pinned clone) against the stub tier"
 	@echo "  make keys-check   refuse if a key-shaped file is tracked"
 	@echo "  make clean        remove build output"
 
@@ -83,12 +99,23 @@ fmt-check:
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	@echo "fmt: clean"
 
+.PHONY: golangci-lint
+golangci-lint:
+	@if command -v $(GOLANGCI_LINT) >/dev/null 2>&1; then \
+		echo "golangci-lint: run ./..."; \
+		$(GOLANGCI_LINT) run ./...; \
+	else \
+		echo "golangci-lint: SKIPPED — not installed"; \
+		echo "  install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \
+		echo "  config:  $(CURDIR)/.golangci.yml"; \
+	fi
+
 .PHONY: lint
-lint: build vet fmt-check
+lint: build vet fmt-check golangci-lint
 	@echo "lint: ok"
 
 .PHONY: ci
-ci: fmt-check vet test-race
+ci: fmt-check vet golangci-lint test-race
 	@echo "ci: ok"
 
 # No private key material is ever committed. This mirrors the fabric's
@@ -98,6 +125,49 @@ keys-check:
 	@files=$$(git ls-files | grep -E '(\.key$$|\.pem$$|_key\.json$$|\.state/keys/|\.state/.*\.key$$)' || true); \
 	if [ -n "$$files" ]; then echo "keys-check: refusing, tracked key files:"; echo "$$files"; exit 1; fi
 	@echo "keys-check: ok"
+
+# Reference evaluation gate (fabric Step 51a). Drives lm-evaluation-harness
+# against an OpenAI-compatible endpoint and fails non-zero if the harness does.
+# The default tier is the deterministic stub (cmd/stub-vllm): the pinned task
+# `eval/spark_smoke.yaml` targets the stub's exact echo, so exact_match = 1.0
+# proves request/response/metric wiring end to end; against a real model the
+# same task reports a real score. lm-eval lives in the pinned clone's venv, not
+# in this module's dependency graph, so a missing venv is an honest SKIP.
+.PHONY: eval
+eval: ## Reference eval: lm-eval (pinned clone) against the stub tier
+	@set -eu; \
+	if [ ! -x "$(LMEVAL_PY)" ]; then \
+		echo "eval: SKIPPED — no lm-eval venv at $(LMEVAL_PY)"; \
+		echo "  set up once:  python3 -m venv $(LMEVAL_DIR)/.venv"; \
+		echo "                $(LMEVAL_DIR)/.venv/bin/pip install -e '$(LMEVAL_DIR)[api]'"; \
+		exit 0; \
+	fi; \
+	base_url="$(EVAL_BASE_URL)"; \
+	stub_pid=""; \
+	if [ -z "$$base_url" ]; then \
+		$(MAKE) --no-print-directory build >/dev/null; \
+		mkdir -p "$(EVAL_OUT)"; \
+		./$(BIN)/stub-vllm -host 127.0.0.1 -port $(EVAL_PORT) -model $(EVAL_MODEL) >"$(EVAL_OUT)/stub.log" 2>&1 & \
+		stub_pid=$$!; \
+		trap 'kill $$stub_pid 2>/dev/null || true' EXIT; \
+		ready=0; \
+		for _ in $$(seq 1 50); do \
+			if curl -sf "http://127.0.0.1:$(EVAL_PORT)/health" >/dev/null 2>&1; then ready=1; break; fi; \
+			sleep 0.1; \
+		done; \
+		if [ "$$ready" -ne 1 ]; then echo "eval: stub never became healthy"; cat "$(EVAL_OUT)/stub.log"; exit 1; fi; \
+		base_url="http://127.0.0.1:$(EVAL_PORT)/v1/completions"; \
+	fi; \
+	echo "eval: base_url=$$base_url tasks=$(EVAL_TASKS)"; \
+	"$(LMEVAL_PY)" -m lm_eval \
+		--model local-completions \
+		--model_args "base_url=$$base_url,tokenizer_backend=none" \
+		--tasks $(EVAL_TASKS) \
+		--include_path $(EVAL_INCLUDE) \
+		--limit $(EVAL_LIMIT) \
+		--output_path "$(EVAL_OUT)" \
+		--log_samples; \
+	echo "eval: results in $(EVAL_OUT)"
 
 .PHONY: clean
 clean:

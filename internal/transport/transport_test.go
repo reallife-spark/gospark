@@ -111,7 +111,8 @@ func TestSendBlockToDeadPeerTimesOut(t *testing.T) {
 
 func TestCertFingerprintStable(t *testing.T) {
 	a := []byte("hello")
-	if transport.CertFingerprint(a) != transport.CertFingerprint(a) {
+	first, second := transport.CertFingerprint(a), transport.CertFingerprint(a)
+	if first != second {
 		t.Fatal("fingerprint must be stable")
 	}
 	if transport.CertFingerprint(a) == transport.CertFingerprint([]byte("world")) {

@@ -1,0 +1,47 @@
+# CodeQL for goSpark's Go surface, patterned on the dsx repos' `codeql-scan`
+# (the fabric's references/nvidia-dsx-standard-practice.md, Step 48).
+#
+# No local equivalent exists for a hosted analyzer, so this is the one job that
+# is genuinely GitHub-only. The local gate stays authoritative for everything it
+# can check; this adds the static-analysis pass a runner can do and a driverless
+# machine cannot.
+name: codeql
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "41 4 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (go)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
+        with:
+          languages: go
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
+        with:
+          category: "/language:go"
