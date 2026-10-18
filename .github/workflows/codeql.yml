@@ -40,18 +40,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # Code scanning is a paid feature on private repos (GitHub Code Security);
+      # without it the Analyze step fails as a "configuration error" after a
+      # perfectly good extraction, which is noise rather than a finding. Detect
+      # it up front, say why, and skip — the same contract as a local gate
+      # skipping a tool it cannot run: never red for something this plan
+      # cannot do, and never silent about it either. Enabling Code Security,
+      # or making the repo public, flips this to a real analysis with no
+      # further edits. Same change as sparknet's codeql.yml.
+      - name: Check code scanning is available
+        id: availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          info=$(gh api "repos/${GITHUB_REPOSITORY}" \
+            --jq '[.private, (.security_and_analysis.advanced_security.status // "disabled")] | @tsv')
+          read -r private status <<< "$info"
+          if [ "$private" = "false" ] || [ "$status" = "enabled" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=CodeQL skipped::${GITHUB_REPOSITORY} is private and GitHub Code Security is not enabled, so GitHub cannot run code scanning here. The local \`make ci\` gate stays authoritative; this job analyses for real once Code Security is enabled or the repo goes public."
+          fi
+
       - name: Set up Go
+        if: steps.availability.outputs.available == 'true'
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Initialize CodeQL
+        if: steps.availability.outputs.available == 'true'
         uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
         with:
           languages: go
 
       - name: Analyze
+        if: steps.availability.outputs.available == 'true'
         uses: github/codeql-action/analyze@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3
         with:
           category: "/language:go"
