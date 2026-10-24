@@ -73,6 +73,13 @@ func AuthorizationMessage(entry *apiv1.NodeAuthorization) ([]byte, error) {
 // NewAuthorization builds and signs one registry entry for the given identity.
 // It validates the capabilities are in the vocabulary, sorts them, projects the
 // identity, computes the fingerprint and signs the signed envelope.
+//
+// The entry it returns carries no attested Department. To attest one, set
+// entry.Department and re-sign through SignRegistry, which recomputes the
+// signature over the whole envelope — Department included, since it is inside
+// the bytes the Master signs. Setting it after signing produces an entry whose
+// signature no longer verifies, which is the point: attesting a department is an
+// act of the master key, not a field a registry editor fills in.
 func NewAuthorization(master *identity.Identity, ni apiv1.NodeIdentity, capabilities []string, issuedAt, expiresAt time.Time) (apiv1.NodeAuthorization, error) {
 	var entry apiv1.NodeAuthorization
 	if master == nil || master.Private == nil {
