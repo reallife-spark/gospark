@@ -10,7 +10,8 @@
     "cluster-vote",
     "cluster-dispatch",
     "cluster-serve",
-    "admin-supervise"
+    "admin-supervise",
+    "cross-department-share"
   ],
   "definitions": {
     "telemetry": {
@@ -57,6 +58,12 @@
       "holder": "master",
       "sensitive": true,
       "note": "The cross-node administration capability (ADMIN_FEDERATION_DESIGN.md, fabric PLAN Step 29). holder: master — the authority to *issue* sits with the elected key holder; a peer holding this in its registry entry accepts Master-signed admin-requests in guard-protocol order and executes them against the peer's own Open WebUI with the peer's own service-account token, which never leaves the node. The bridge /admin/* route exists and verifies, but authorises nothing until the real registry carries a signed grant of this capability — the same inert posture as cluster-dispatch."
+    },
+    "cross-department-share": {
+      "grants": "Offer or accept a share with a node whose Master-attested department differs from this node's own.",
+      "holder": "peer",
+      "sensitive": true,
+      "note": "Inside a department, sharing needs no extra grant: the ordinary share rules in contracts/share-protocol.md apply unchanged. Crossing out of one is the privilege this names. The department compared is the `department` field of each node's signed registry entry (contracts/registry-schema.json), never anything a node says about itself - a self-declared department would let a node claim its way into whichever department it wanted to read, and in-department sharing is the *easier* path, so that is exactly the direction an attacker would push. The boundary binds only when both sides carry an attested department and the two differ: where the Master has attested none there is no boundary to cross, so a fresh deployment shares as it always did instead of needing a grant nobody has issued yet. Holding this widens nothing else - the holder still needs the ordinary share grant, still obeys the four clocks, and in master_governed mode still needs ratification."
     }
   },
   "master_capabilities": {

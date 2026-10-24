@@ -47,6 +47,10 @@ type signedEnvelope struct {
 	IssuedAt     string             `json:"issued_at"`
 	ExpiresAt    string             `json:"expires_at"`
 	Revoked      bool               `json:"revoked"`
+	// No omitempty: the fabric always signs this key, as null when the Master
+	// attested no department. Two canonical forms for one logical entry is the
+	// ambiguity the byte-for-byte rule exists to prevent.
+	Department *string `json:"department"`
 }
 
 // AuthorizationMessage returns the canonical bytes the Master signs for one
@@ -61,6 +65,7 @@ func AuthorizationMessage(entry *apiv1.NodeAuthorization) ([]byte, error) {
 		IssuedAt:     entry.IssuedAt,
 		ExpiresAt:    entry.ExpiresAt,
 		Revoked:      entry.Revoked,
+		Department:   entry.Department,
 	}
 	return apiv1.CanonicalJSON(env)
 }

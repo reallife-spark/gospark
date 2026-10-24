@@ -22,6 +22,11 @@ const (
 	CapClusterDispatch Capability = "cluster-dispatch"
 	CapClusterServe    Capability = "cluster-serve"
 	CapAdminSupervise  Capability = "admin-supervise"
+
+	// CapCrossDepartmentShare lets a node share with one whose Master-attested
+	// department differs from its own. Inside a department no extra grant is
+	// needed; crossing out of one is the privilege this names.
+	CapCrossDepartmentShare Capability = "cross-department-share"
 )
 
 // KnownCapabilities is the complete vocabulary. Anything not listed is refused
@@ -35,6 +40,7 @@ var KnownCapabilities = []Capability{
 	CapClusterDispatch,
 	CapClusterServe,
 	CapAdminSupervise,
+	CapCrossDepartmentShare,
 }
 
 var knownSet = func() map[Capability]struct{} {
@@ -48,8 +54,9 @@ var knownSet = func() map[Capability]struct{} {
 // Sensitive names the capabilities whose holder incurs the risk, so the control
 // plane can require an explicit operator opt-in before serving them.
 var sensitive = map[Capability]bool{
-	CapGuardApply:   true,
-	CapClusterServe: true,
+	CapGuardApply:           true,
+	CapClusterServe:         true,
+	CapCrossDepartmentShare: true,
 }
 
 // MasterImpliedCapabilities are not granted to any peer: they are *implied by

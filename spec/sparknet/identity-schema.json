@@ -33,14 +33,20 @@
     "overlay_ipv4",
     "issued_at",
     "expires_at",
-    "revoked"
+    "revoked",
+    "department"
   ],
-  "signed_envelope_note": "Signing only the identity would leave capabilities and overlay_ipv4 mutable by anyone who can edit the registry file, escalating a node to guard-apply without the Master approving it. revoked is inside the envelope so only the Master can flip it.",
+  "signed_envelope_note": "Signing only the identity would leave capabilities and overlay_ipv4 mutable by anyone who can edit the registry file, escalating a node to guard-apply without the Master approving it. revoked is inside the envelope so only the Master can flip it. department is inside it because it gates cross-department sharing, so an unsigned one would be a privilege boundary anyone with registry write access could move. contracts/registry-schema.json states the same envelope for the registry document; both are pinned against shared/sparknet-authz.py::SIGNED_FIELDS, so they cannot drift apart silently. Adding a field here changes the bytes the Master signs, which stops every existing entry signature verifying - adopt it by re-signing and re-publishing at a higher sequence, never by editing entries in place.",
   "registry": {
     "path": "manifests/node-authorizations.json",
     "author": "master",
     "reader": "peer",
-    "distribution": "UNSPECIFIED \u2014 the channel by which a signed registry reaches peers is not yet built. Peers currently read a local copy.",
+    "schema": "contracts/registry-schema.json",
+    "schema_note": "The registry document's own shape - its fields, its entries' fields, the signature field name - is stated in contracts/registry-schema.json and checked by shared/sparknet-registry-schema.py. This file names the identity and the signed envelope; that one names the document around them. The Master reaches the same file at master-node/manifests/registry.schema.json, which is a symlink rather than a copy: two copies of a shape would be two answers to what a registry looks like, and they would drift.",
+    "document_schema_version": "1.0",
+    "signature_field": "signature_b64",
+    "signature_field_note": "The field the Master writes and the peer reads. It was named 'signature' in a draft schema that nothing produced and nothing read; the implementation says signature_b64, so the implementation is what the contract says.",
+    "distribution": "DECIDED (Step 6): the Master pushes a signed registry publication to each peer's guard on 9090 (POST /api/v1/registry). See contracts/registry-publication.json.",
     "empty_by_default": true,
     "empty_by_default_rationale": "No node gets privileges by default. The shipped registry has no entries on purpose, so a fresh deployment is fail-closed."
   },

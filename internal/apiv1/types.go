@@ -107,7 +107,11 @@ type NodeAuthorization struct {
 	IssuedAt     string       `json:"issued_at"`
 	ExpiresAt    string       `json:"expires_at"`
 	Revoked      bool         `json:"revoked"`
-	SignatureB64 string       `json:"signature_b64"`
+	// Department is the Master-attested department of this node's owner. Nil
+	// when none has been attested. It is inside the signed envelope, so only the
+	// Master can move a node between departments.
+	Department   *string `json:"department,omitempty"`
+	SignatureB64 string  `json:"signature_b64"`
 }
 
 // NodeRegistry is the set of signed node authorizations, distributed to peers

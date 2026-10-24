@@ -8,8 +8,8 @@ checkout of the fabric repo alongside it.
 | Field | Value |
 |---|---|
 | Source repository | `/mnt/knowledge/sparknet` (`contracts/`) |
-| Source commit | `59ed8c25a39f07320a6bd4ed206349946b9cafd4` |
-| Snapshot taken | 2026-10-14 |
+| Source commit | `b9bd7ee62726b323a29422da4bdc87a155b32b2c` |
+| Snapshot taken | 2026-10-24 |
 | Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json` |
 
 ## Rule

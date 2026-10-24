@@ -181,7 +181,8 @@ func TestVerifyResultRoundTrip(t *testing.T) {
 func TestVocabularyMatchesFabric(t *testing.T) {
 	want := []string{
 		"admin-supervise", "cluster-dispatch", "cluster-serve", "cluster-vote",
-		"guard-apply", "p2p-sync", "push-receive", "telemetry",
+		"cross-department-share", "guard-apply", "p2p-sync", "push-receive",
+		"telemetry",
 	}
 	got := authz.KnownSorted()
 	if len(got) != len(want) {
