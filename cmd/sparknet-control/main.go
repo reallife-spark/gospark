@@ -109,7 +109,7 @@ func run() error {
 				for {
 					dec := app.Place(placement.Request{}, authz.CapClusterServe)
 					if dec.NodeID != "" {
-						if err := app.DispatchTask(context.Background(), dec.NodeID, env); err != nil {
+						if err := app.DispatchTask(ctx, dec.NodeID, env); err != nil {
 							fmt.Fprintln(os.Stderr, "sparknet-control: auto-dispatch:", err)
 							return
 						}
@@ -127,7 +127,7 @@ func run() error {
 					}
 				}
 			}
-			if err := app.DispatchTask(context.Background(), *dispatch, env); err != nil {
+			if err := app.DispatchTask(ctx, *dispatch, env); err != nil {
 				fmt.Fprintln(os.Stderr, "sparknet-control: dispatch:", err)
 			}
 		}()

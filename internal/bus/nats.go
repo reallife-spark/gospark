@@ -132,16 +132,16 @@ func (n *NATS) Publish(ctx context.Context, subject string, data []byte) error {
 // reply subject, so bus.Reply works identically on NATS and the Memory bus.
 // (JetStream messages have no reply subject; Request/Reply is a core-NATS
 // feature and is only available on a bus connected without a stream.)
-func (n *NATS) Subscribe(_ context.Context, subject string, h Handler) (Subscription, error) {
+func (n *NATS) Subscribe(ctx context.Context, subject string, h Handler) (Subscription, error) {
 	wrapped := func(msg *nats.Msg) {
-		ctx := context.Background()
+		hctx := ctx
 		if msg.Reply != "" {
 			nc, reply := n.nc, msg.Reply
-			ctx = context.WithValue(ctx, replyKey{}, ReplyFn(func(b []byte) {
+			hctx = context.WithValue(hctx, replyKey{}, ReplyFn(func(b []byte) {
 				_ = nc.Publish(reply, b)
 			}))
 		}
-		if err := h(ctx, msg.Subject, msg.Data); err != nil {
+		if err := h(hctx, msg.Subject, msg.Data); err != nil {
 			if n.js != nil {
 				_ = msg.Nak()
 			}

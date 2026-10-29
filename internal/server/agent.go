@@ -58,7 +58,7 @@ func (a *App) runAgent(ctx context.Context) error {
 // onRegistry adopts a Master-signed registry from the bus. It refuses a bad
 // signature, an unknown capability, or an older registry than the one already
 // adopted (rollback).
-func (a *App) onRegistry(_ context.Context, _ string, data []byte) error {
+func (a *App) onRegistry(ctx context.Context, _ string, data []byte) error {
 	var doc apiv1.NodeRegistry
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("server: registry payload: %w", err)
@@ -68,7 +68,7 @@ func (a *App) onRegistry(_ context.Context, _ string, data []byte) error {
 		return err
 	}
 	// Re-announce health so the control plane sees the new digest.
-	if err := a.PublishHealth(context.Background(), true); err != nil {
+	if err := a.PublishHealth(ctx, true); err != nil {
 		a.log.Warn("health re-publish failed", "err", err)
 	}
 	return nil
@@ -164,7 +164,7 @@ func (a *App) onTask(ctx context.Context, _ string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	return a.publishResult(context.Background(), attested)
+	return a.publishResult(ctx, attested)
 }
 
 func (a *App) attestResult(task apiv1.TaskEnvelope, result string) (apiv1.ResultEnvelope, error) {
