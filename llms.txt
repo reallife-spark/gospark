@@ -10,6 +10,12 @@ Read `README.md` for the package map and every command with its example,
 and `docs/ROADMAP.md` for what is next. `CONTRIBUTING.md` states the two rules
 that are not style (the compute boundary and fail-closed authority).
 
+`USER_MANUAL.md` is the developer-facing manual for this repository: the
+boundary, the authority model, the packages, the binaries, the seams, the
+contract snapshots, the gate, and how to make a change correctly. The **master
+manual** for the whole system lives in the `sparknet` repository as
+`USER_MANUAL.md`.
+
 ## Commands
 
 - Build: `make build` (pure Go, `CGO_ENABLED=0`); `make build-gpu` (the one cgo

@@ -14,6 +14,12 @@ while a GPU job is in flight.
 
 ## What is here
 
+> [`USER_MANUAL.md`](USER_MANUAL.md) is the developer-facing manual for this
+> repository: the boundary, the authority model, the 24 packages, the eight
+> binaries, the seams, the contract snapshots, the gate, and how to make a
+> change correctly. The **master manual** for the whole system lives in the
+> `sparknet` repository as `USER_MANUAL.md`.
+
 | Path | What it is |
 |---|---|
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |

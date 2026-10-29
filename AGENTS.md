@@ -18,6 +18,12 @@ follows one rule, recorded in ADR 0001: **Go runs the control/service plane;
 Python/CUDA runs the compute plane.** The peer guard, the anchor and the
 compute plane stay where they are.
 
+`USER_MANUAL.md` is the developer-facing manual for this repository: the
+boundary, the authority model, the packages, the binaries, the seams, the
+contract snapshots, the gate, and how to make a change correctly. The **master
+manual** for the whole system lives in the `sparknet` repository as
+`USER_MANUAL.md`.
+
 ## The boundary (do not cross it)
 
 - The pure-Go core builds with `CGO_ENABLED=0` and must never require a GPU, a
