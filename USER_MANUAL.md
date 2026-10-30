@@ -1,6 +1,6 @@
 ---
 title: goSpark — user manual
-updated: 2026-10-21
+updated: 2026-10-30
 ---
 
 # goSpark — user manual
@@ -86,7 +86,7 @@ So the split is:
 | Telemetry collection | Go — `internal/gputel` (cgo sidecar) |
 | KV block movement | Go — `internal/kvtransfer`, `internal/transport` |
 | Model execution, CUDA, tokenisation | Python — the compute plane, over the bridge |
-| The fabric's guard, anchor, vault, provenance | Python — the sibling `sparknet` repository |
+| The fabric's guard, anchor, vault, provenance | Python — the parent fabric (`sparknet/`) |
 
 The two planes meet at exactly two places: the **task bridge**
 (`internal/compute`, [ADR 0006](docs/adr/0006-compute-plane-task-bridge.md))
@@ -107,10 +107,33 @@ Read [AGENTS.md](AGENTS.md) first: it states the boundary, the commands, the
 layout, the conventions and where the fabric is. This manual explains the
 code.
 
+### Where this checkout lives
+
+goSpark is still its own repository, but it is now **hosted inside the
+fabric** at `gospark/`:
+
+```
+sparknet/                 ← the fabric root (this checkout's parent)
+  contracts/              the contract SSOT
+  gospark/                ← this repository (its own .git)
+  peer-node/  master-node/
+```
+
+The fabric's `.gitignore` excludes `/gospark/`, so the nested checkout is
+never tracked twice. The node image consumes it through the **BuildKit named
+context** `gospark` — the image build context is the fabric root, so the
+nested `.git` and its build output are excluded by `.dockerignore` and only
+`gospark/bin` and `gospark/compute` are copied into the image. The setup
+script and both compose files default to `<fabric-root>/gospark`;
+`GOSPARK_DIR` overrides it.
+
+Everything in this manual is relative to `gospark/`. Run the commands from
+there.
+
 | Path | What it is |
 |---|---|
 | `cmd/` | The eight binaries. |
-| `internal/` | The 24 packages. Nothing outside `cmd/` may import them by path. |
+| `internal/` | The 23 packages. Nothing outside `cmd/` may import them by path. |
 | `proto/sparknet/v1/` | The on-wire contract: one `.proto` per family. |
 | `spec/sparknet/` | Read-only snapshots of the fabric's contract. |
 | `compute/` | The reference Python/CUDA worker and its `.example` env files. |
@@ -148,6 +171,10 @@ message**, and accept **the same messages**. Two details carry that:
   the registry *document* is unsigned; each *entry* is signed. That is what
   lets a revoked flag live inside the signature, and it is why only the
   Master can set one.
+- **The attested `department`** is part of the mirror. The fabric's
+  `cross-department-share` capability is compared against the `department` in
+  each **signed** registry entry, never a node's self-description, so goSpark
+  carries the field through `internal/identity` and `internal/authz` as well.
 
 The fabric's suite asserts the agreement from the Go side: it verifies the
 Python authz and the Go authz against the same vectors and fails if they
@@ -171,7 +198,7 @@ already has.
 
 ## 5. The packages
 
-24 packages under `internal/`. The ones worth knowing first:
+23 packages under `internal/`. The ones worth knowing first:
 
 ### The trust and identity core
 
@@ -572,12 +599,13 @@ placeholder.
 Broadly, in this repository:
 
 - **Implemented and tested** — the control/data-plane split, the signed
-  envelope verification and its byte-for-byte agreement with the fabric, the
-  per-entry registry signing and revocation, the NVFP4 codec, the QUIC
-  transport, the live admin surface, the GPU telemetry (through the cgo
-  sidecar), telemetry-aware dispatch, the compute-plane task bridge, the
-  serving, ingest, KV-routing and backup seams, the Prometheus metrics
-  surface, the read-only MCP server.
+  envelope verification and its byte-for-byte agreement with the fabric
+  (including the attested `department` field and the closed capability
+  vocabulary), the per-entry registry signing and revocation, the NVFP4
+  codec, the QUIC transport, the live admin surface, the GPU telemetry
+  (through the cgo sidecar), telemetry-aware dispatch, the compute-plane task
+  bridge, the serving, ingest, KV-routing and backup seams, the Prometheus
+  metrics surface, the read-only MCP server.
 - **Deliberately absent** — model inference. That is the compute plane, and
   it is reached over the bridge.
 - **Scaffold** — `internal/mesh` is explicitly a small scaffold: it reports
@@ -585,7 +613,8 @@ Broadly, in this repository:
 
 The honest test: **if you cannot point at a command that exercises it, it is
 specified.** The README's "Status" section and the ADRs are where that line
-is kept.
+is kept. `spec/sparknet/` is a snapshot, not the authority: when the fabric's
+contract moves, the snapshot and the mirrored Go move in the same change.
 
 ---
 
