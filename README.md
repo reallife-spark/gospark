@@ -15,7 +15,7 @@ while a GPU job is in flight.
 ## What is here
 
 > [`USER_MANUAL.md`](USER_MANUAL.md) is the developer-facing manual for this
-> repository: the boundary, the authority model, the 24 packages, the eight
+> repository: the boundary, the authority model, the 23 packages, the eight
 > binaries, the seams, the contract snapshots, the gate, and how to make a
 > change correctly. The **master manual** for the whole system lives in the
 > `sparknet` repository as `USER_MANUAL.md`.
@@ -363,10 +363,14 @@ When a snapshot moves, the mirrored Go in `internal/authz` and
 
 ## Status
 
-First-pass scaffold + control-plane core. The control/data-plane split, the
-signed-envelope verification, the NVFP4 codec, the QUIC transport, the live
-admin surface, GPU telemetry (via the cgo sidecar), telemetry-aware dispatch and
-the compute-plane task bridge are real and tested. Model inference is
+Control-plane core, with the service seams built beside it. The
+control/data-plane split, the signed-envelope verification (including the
+fabric's per-entry registry and attested `department`), the NVFP4 codec, the
+QUIC transport, the live loopback admin surface, GPU telemetry (via the cgo
+sidecar), telemetry-aware dispatch, the compute-plane task bridge, and the
+serving, ingest/embed, KV-routing, backup, metrics and read-only MCP seams are
+real and tested. `internal/mesh` remains a deliberately small scaffold: it
+inspects and reroutes, and does not manage the overlay. Model inference is
 deliberately **not** here — that is the compute plane, reached over the bridge.
 See
 [`docs/adr/0001-go-control-plane.md`](docs/adr/0001-go-control-plane.md),
