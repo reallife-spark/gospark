@@ -1,0 +1,190 @@
+{
+  "contract": "memory-schema",
+  "schema_version": 1,
+  "description": "Per-vault typed memory, its retention and sharing rules, the delegate run shape, and the boundary between the Go store and the Python authority gateway. Memory is an index over knowledge the node already owns; it is never a second vault, never authority, and never a shared corpus by itself.",
+  "implementation_state": {
+    "go_store": "implemented (gospark) — internal/memory and internal/delegates, cmd/sparknet-memory on loopback 4110; one JSON store per vault with an in-memory lexical index and an optional Qdrant semantic index (collection sparknet-memory; lexical fallback when embeddings/Qdrant are unavailable)",
+    "gateway": "implemented (shared/sparknet-memory-gateway.py) — verifies signed grants and Open WebUI sessions, narrows to one vault, and forwards only to the Go service",
+    "node_surface": "implemented in config for spark.compose.yml and goagx/sparknet.agx.compose.yml; live node start is DoD: confirm: user",
+    "master_content": "read-through only; no permanent Master mirror. The read path is a signed admin request executed by the peer gateway and audited locally",
+    "not_built": "Qdrant semantic ranking is a later additive backend; the first store is lexical and labels that honestly"
+  },
+  "types": {
+    "closed_vocabulary": true,
+    "values": {
+      "episodic": "what happened: turns, session summaries, daily notes, delegate handoffs",
+      "semantic": "what is known: vault pages, entity facts, preferences, personas",
+      "procedural": "how work is done: skills, agent prompts, tool/workflow traces",
+      "short_term": "the current session's working set and cache; never cross-session and never shared",
+      "shared": "workflow-scoped blackboard: commands, status, reports and artifacts for delegates"
+    }
+  },
+  "vault_scope": {
+    "primary_key": "vault_id",
+    "derivation": "sha256(node_id + NUL + canonical absolute vault path); the path is stored only in the 0600 catalog",
+    "rule": "one SQLite/JSON store per vault; no cross-vault query and no node-wide global memory",
+    "open_webui": "a signed-in user resolves to /srv/sparknet/knowledge/peer-<user_id>",
+    "opencode": "the session directory is the vault; opening the same peer-<id> vault in OpenCode returns the same vault_id",
+    "master": "the Master role vault and its users' provisioned vaults follow the same rule"
+  },
+  "record": {
+    "schema": "sparknet-memory/1",
+    "fields": {
+      "memory_id": "string, generated",
+      "vault_id": "string, assigned by the store",
+      "memory_type": "one of the closed types",
+      "subtype": "optional string",
+      "scope": {
+        "user_id": "exact tenant boundary",
+        "project_id": "project slug under 06_Projects",
+        "thread_id": "session/thread boundary",
+        "workflow_id": "delegate workflow boundary",
+        "agent_id": "agent boundary"
+      },
+      "source_kind": "session | vault_page | tool_run | delegate | share | rfi | user_note | daily_note",
+      "source_ref": "vault-relative or opaque reference; absolute paths and '..' are refused",
+      "source_digest": "optional hash of the source bytes",
+      "text": "redacted record text, at most 64 KiB",
+      "summary": "optional compact summary, at most 8 KiB",
+      "importance": "0..1, default 0.5",
+      "retention_state": "active | suppressed | deleted",
+      "retention_until": "RFC3339 UTC or empty",
+      "consent": {
+        "capture": "the user allowed this record to be written",
+        "share": "the user allowed this record to be considered for a share",
+        "uplift": "the user allowed this record to be considered for consented uplift"
+      },
+      "provenance": "owner_id, owner_node, agent, model, share_ids[], ledger_ref",
+      "content_hash": "sha256 over type, source, scope, text and summary",
+      "created_at": "RFC3339",
+      "updated_at": "RFC3339",
+      "last_used_at": "RFC3339 or empty",
+      "use_count": "integer",
+      "supersedes": "optional record ids",
+      "conflict_of": "optional record id held for a human",
+      "tombstone": "reason retained after a delete"
+    },
+    "rules": [
+      "Secret-shaped values are redacted before a record is persisted.",
+      "A duplicate content hash returns the existing record; it does not create a near-duplicate.",
+      "A conflict is held and reported, never silently overwritten.",
+      "A suppressed record is hidden from retrieval; a deleted record keeps a tombstone and is not returned.",
+      "Retrieved records are marked used so a useful memory stays warm."
+    ]
+  },
+  "retention": {
+    "defaults_days": {
+      "episodic": 90,
+      "semantic": 0,
+      "procedural": 365,
+      "short_term": 0,
+      "shared": 30
+    },
+    "zero_means": "no expiry at the memory layer; the vault's own lifecycle still applies to semantic pages",
+    "prune_rule": "Prune suppresses expired records. It never deletes. Deletion is a user action and leaves a tombstone.",
+    "master_mirror": "none; Master content access is read-through and stores only request metadata and a digest"
+  },
+  "authority_boundary": {
+    "go_service": "holds no key, verifies no signature, writes no vault page and signs no note",
+    "python_gateway": "the only front door; verifies the signed grant or Open WebUI session and narrows to one vault",
+    "master_access": "a signed admin request with memory-supervise is executed by the peer gateway on demand; it is not an answer corpus and the Master AI must not ingest it",
+    "no_capability": "local memory reads and writes need no new capability; a signed grant's scope is the ceiling"
+  },
+  "knowledge_flow": {
+    "local_memory": "reads only the vault, the user's KB, accepted RFI/share pages, and local session evidence",
+    "cross_node": "episodic and shared memory travel only inside an accepted session-handoff; semantic and procedural pages travel only as kb-view or kb-share",
+    "short_term": "never crosses a node boundary",
+    "shared_memory": "workflow-scoped and participant-scoped; it is not a fleet-wide corpus",
+    "master_metadata": "counts, capture posture, retention and run status are telemetry/admin evidence, never knowledge"
+  },
+  "delegate_run": {
+    "schema": "sparknet-delegate-run/1",
+    "plan_fields": [
+      "plan_id",
+      "project_id",
+      "user_id",
+      "workflow_id",
+      "tasks"
+    ],
+    "task_fields": [
+      "task_id",
+      "description",
+      "harness",
+      "assigned_agent",
+      "dependencies",
+      "workspace",
+      "permissions",
+      "budget",
+      "verification",
+      "output_schema"
+    ],
+    "harnesses": [
+      "opencode",
+      "command",
+      "local-model",
+      "cluster"
+    ],
+    "run_fields": [
+      "run_id",
+      "plan_id",
+      "task_id",
+      "project_id",
+      "user_id",
+      "workflow_id",
+      "parent_run_id",
+      "harness",
+      "task",
+      "status",
+      "workspace",
+      "result",
+      "error",
+      "created_at",
+      "updated_at",
+      "finished_at",
+      "events"
+    ],
+    "statuses": [
+      "pending",
+      "running",
+      "waiting",
+      "succeeded",
+      "failed",
+      "blocked",
+      "canceled",
+      "budget_exceeded"
+    ],
+    "rules": [
+      "The plan is validated before any task runs: unique ids, known dependencies, no cycles, known harness.",
+      "A delegate receives the caller's scope, never a wider scope; local memory is reached through the gateway.",
+      "A task failure never triggers a rerun of the original request; consumers are blocked.",
+      "A delegate writes to its workspace, never directly to the vault. A human approves a report before Python provenance signs it.",
+      "Budgets bound wall time and actionable steps; cancellation is cooperative and recorded."
+    ]
+  },
+  "share_bundle": {
+    "schema": "sparknet-memory-bundle/1",
+    "shape": "a bounded JSON bundle of records plus their source refs; it is a payload profile inside an existing session-handoff or kb-share, not a new share type",
+    "staging": "the share regime stages it under 01_Inbox/share-<id>/; memory ingest happens only after acceptance",
+    "contents": [
+      "episodic summaries",
+      "shared blackboard entries",
+      "project notes explicitly selected by the user"
+    ],
+    "never": [
+      "short_term/cache",
+      "secrets",
+      "another user's records",
+      "an unlimited raw transcript",
+      "authority or registry data"
+    ]
+  },
+  "refusals": {
+    "vault_forbidden": "a path outside the configured vault roots",
+    "vault_not_found": "an id not in the catalog",
+    "record_invalid": "unknown type, empty content, unsafe source_ref, or an over-limit field",
+    "import_conflict": "a differing record with the same content hash; held, not overwritten",
+    "grant_refused": "signature, registry, expiry, capability or identity check failed",
+    "webui_unauthorized": "the Open WebUI session did not resolve to a user",
+    "memory_unavailable": "the Go store is down; the gateway fails closed for writes and open for chat"
+  }
+}

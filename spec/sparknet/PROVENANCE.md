@@ -8,9 +8,9 @@ checkout of the fabric repo alongside it.
 | Field | Value |
 |---|---|
 | Source repository | `/mnt/knowledge/sparknet` (`contracts/`) |
-| Source commit | `b9bd7ee62726b323a29422da4bdc87a155b32b2c` |
-| Snapshot taken | 2026-10-24 |
-| Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json` |
+| Source | `a4fffb3` plus the working-tree memory contract (2026-11-02); the snapshot is refreshed again when that change lands |
+| Snapshot taken | 2026-11-02 |
+| Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json`, `memory-schema.json` |
 
 ## Rule
 
@@ -34,7 +34,9 @@ edited in the *same* change as the snapshot, never silently.
   key in the `wireguard_public_key_b64` slot.
 - **`ports.json`** → default listen addresses in `configs/*.example.yaml`
   (the control-plane gateway and data plane do not collide with reserved peer
-  ports).
+  ports), plus the node memory service at `4110`.
+- **`memory-schema.json`** → the typed-memory and delegate vocabulary; the Go
+  store implements it and never treats it as authority.
 - **`overlay.json`** → the WireGuard-overlay assumption behind `internal/mesh`.
 
 ## Non-goal

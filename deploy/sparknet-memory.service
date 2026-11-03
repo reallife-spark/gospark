@@ -1,0 +1,28 @@
+[Unit]
+Description=goSpark per-vault typed memory service
+Documentation=file:///usr/share/doc/sparknet/goSpark/USER_MANUAL.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sparknet
+Group=sparknet
+Environment=GOSPARK_MEMORY_LISTEN=127.0.0.1:4110
+Environment=GOSPARK_MEMORY_STATE=/var/lib/sparknet/memory
+EnvironmentFile=-/etc/sparknet/memory.env
+ExecStart=/usr/local/bin/sparknet-memory -config /etc/sparknet/memory.yaml
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/sparknet/memory
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

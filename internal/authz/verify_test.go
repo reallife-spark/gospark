@@ -181,8 +181,8 @@ func TestVerifyResultRoundTrip(t *testing.T) {
 func TestVocabularyMatchesFabric(t *testing.T) {
 	want := []string{
 		"admin-supervise", "cluster-dispatch", "cluster-serve", "cluster-vote",
-		"cross-department-share", "guard-apply", "p2p-sync", "push-receive",
-		"telemetry",
+		"cross-department-share", "guard-apply", "memory-supervise", "model-uplift",
+		"p2p-sync", "push-receive", "telemetry",
 	}
 	got := authz.KnownSorted()
 	if len(got) != len(want) {
@@ -193,8 +193,8 @@ func TestVocabularyMatchesFabric(t *testing.T) {
 			t.Errorf("capability[%d] = %q, want %q", i, c, want[i])
 		}
 	}
-	if !authz.IsSensitive(authz.CapClusterServe) || !authz.IsSensitive(authz.CapGuardApply) {
-		t.Error("cluster-serve and guard-apply must be sensitive")
+	if !authz.IsSensitive(authz.CapClusterServe) || !authz.IsSensitive(authz.CapGuardApply) || !authz.IsSensitive(authz.CapMemorySupervise) {
+		t.Error("cluster-serve, guard-apply and memory-supervise must be sensitive")
 	}
 	if authz.IsSensitive(authz.CapTelemetry) {
 		t.Error("telemetry must not be sensitive")

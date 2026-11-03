@@ -11,6 +11,7 @@ The compute-plane Python worker has its own unit — see
 | `sparknet-agent.service` | `sparknet-agent` | node agent (peer) |
 | `sparknet-gpu.service` | `sparknet-gpu` | GPU telemetry sidecar (`-watch`) |
 | `sparknet-backup.service` | `sparknet-backup` | signed backup daemon (`run`) |
+| `sparknet-memory.service` | `sparknet-memory` | per-vault typed memory and delegate service (loopback 4110) |
 
 ## Install
 

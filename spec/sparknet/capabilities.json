@@ -11,7 +11,9 @@
     "cluster-dispatch",
     "cluster-serve",
     "admin-supervise",
-    "cross-department-share"
+    "cross-department-share",
+    "model-uplift",
+    "memory-supervise"
   ],
   "definitions": {
     "telemetry": {
@@ -39,19 +41,19 @@
       "grants": "Cast one signed vote in a master election.",
       "holder": "peer",
       "sensitive": false,
-      "note": "Every member holds this, because election is what makes a master at all. It is deliberately weak: a vote is deduplicated by member identity, so casting three votes for yourself is still one vote. It confers nothing \u2014 it is a say, not a grant. See contracts/consensus-protocol.md."
+      "note": "Every member holds this, because election is what makes a master at all. It is deliberately weak: a vote is deduplicated by member identity, so casting three votes for yourself is still one vote. It confers nothing — it is a say, not a grant. See contracts/consensus-protocol.md."
     },
     "cluster-dispatch": {
       "grants": "Submit a cluster job: split a prompt into signed subtasks and fan them out, as separate one-to-one requests, to the nodes this node is connected to.",
       "holder": "peer",
       "sensitive": false,
-      "note": "The initiate side of cluster inference. Launching a job makes no peer act by itself: where governance is master_governed (three or more members) the Master must ratify the job before any cluster-serve node accepts a subtask, and at peer_pair (exactly two members) the initiator signs it directly. It is not sensitive for that reason \u2014 the gate that makes a peer run work is cluster-serve on the receiving node plus, at three or more, the Master's ratification."
+      "note": "The initiate side of cluster inference. Launching a job makes no peer act by itself: where governance is master_governed (three or more members) the Master must ratify the job before any cluster-serve node accepts a subtask, and at peer_pair (exactly two members) the initiator signs it directly. It is not sensitive for that reason — the gate that makes a peer run work is cluster-serve on the receiving node plus, at three or more, the Master's ratification."
     },
     "cluster-serve": {
       "grants": "Accept a signed cluster subtask over the overlay, run it against this node's own model and local knowledge, and return an attested result.",
       "holder": "peer",
       "sensitive": true,
-      "note": "The second sensitive capability after guard-apply, sensitive in the confidentiality direction rather than the mutation direction: the holder lets delegated inference read its local knowledge and returns the result to the cluster. It generalises the compute-serve proposal (COMPUTE_CAPABILITY_DESIGN.md) from a closed operation whitelist to a signed prompt. A node running its own prompts is not gated by this \u2014 only delegated subtasks are \u2014 and any action a served answer triggers still passes the node's own guard."
+      "note": "The second sensitive capability after guard-apply, sensitive in the confidentiality direction rather than the mutation direction: the holder lets delegated inference read its local knowledge and returns the result to the cluster. It generalises the compute-serve proposal (COMPUTE_CAPABILITY_DESIGN.md) from a closed operation whitelist to a signed prompt. A node running its own prompts is not gated by this — only delegated subtasks are — and any action a served answer triggers still passes the node's own guard."
     },
     "admin-supervise": {
       "grants": "Submit signed admin-requests that make a peer perform Open WebUI administrative actions (list/approve users, change roles, read chats and Knowledge) against its own setup.",
@@ -64,10 +66,22 @@
       "holder": "peer",
       "sensitive": true,
       "note": "Inside a department, sharing needs no extra grant: the ordinary share rules in contracts/share-protocol.md apply unchanged. Crossing out of one is the privilege this names. The department compared is the `department` field of each node's signed registry entry (contracts/registry-schema.json), never anything a node says about itself - a self-declared department would let a node claim its way into whichever department it wanted to read, and in-department sharing is the *easier* path, so that is exactly the direction an attacker would push. The boundary binds only when both sides carry an attested department and the two differ: where the Master has attested none there is no boundary to cross, so a fresh deployment shares as it always did instead of needing a grant nobody has issued yet. Holding this widens nothing else - the holder still needs the ordinary share grant, still obeys the four clocks, and in master_governed mode still needs ratification."
+    },
+    "model-uplift": {
+      "grants": "Push consented inventory, Qdrant snapshots, teacher traces and raw-KV manifests to the Master for backup and same-family model distillation.",
+      "holder": "peer",
+      "sensitive": true,
+      "note": "Sensitive in the confidentiality direction: it lets the Master read a peer's indexed knowledge and conversation traces. It grants no authority and no write path on the peer. A peer without it uploads nothing; the Master still decides whether a run may use the data."
+    },
+    "memory-supervise": {
+      "grants": "Accept signed Master memory policy and on-demand content-inspection requests against this node's own memory service.",
+      "holder": "master",
+      "sensitive": true,
+      "note": "Sensitive in the confidentiality direction. The peer applies the request to its local memory service and audits it; the Master stores no permanent mirror. It grants no write to the user's vault and never becomes an answer corpus. The Master AI must not ingest the returned content."
     }
   },
   "master_capabilities": {
-    "note": "The Master's authority is not expressed as a granted capability \u2014 it is possession of the Ed25519 private key, which never leaves the Master. A peer holding this vocabulary but not that key can verify but cannot grant, revoke, or escalate anything. Under the election model this is unchanged in kind: the elected master holds an operational key because a cluster trust root named it, and that root required unanimity. Possession is still the mechanism; a vote is not a substitute for it.",
+    "note": "The Master's authority is not expressed as a granted capability — it is possession of the Ed25519 private key, which never leaves the Master. A peer holding this vocabulary but not that key can verify but cannot grant, revoke, or escalate anything. Under the election model this is unchanged in kind: the elected master holds an operational key because a cluster trust root named it, and that root required unanimity. Possession is still the mechanism; a vote is not a substitute for it.",
     "implied_by_private_key": [
       "sign-authorization",
       "revoke-node",
@@ -75,7 +89,7 @@
     ]
   },
   "escalation_note": "capabilities and overlay_ipv4 are inside the signed envelope (see contracts/identity-schema.json), so editing them in the registry file invalidates the signature. A node with registry write access can revoke (a safe denial) but cannot escalate to guard-apply.",
-  "reformation_note": "Re-formation (a chained master change, policy B) introduces no new capability: it re-uses the election capability for a new root, the existing revoke for any removal, and the existing share/registry path to pull the chained lineage. There is deliberately no 're-form' grant a node could hold \u2014 the direction of a chained root (previous_root_id naming the root in force) is what a signer and a verifier check, so no capability can be added to it without breaking the signature.",
+  "reformation_note": "Re-formation (a chained master change, policy B) introduces no new capability: it re-uses the election capability for a new root, the existing revoke for any removal, and the existing share/registry path to pull the chained lineage. There is deliberately no 're-form' grant a node could hold — the direction of a chained root (previous_root_id naming the root in force) is what a signer and a verifier check, so no capability can be added to it without breaking the signature.",
   "share_types": {
     "purpose": "A share type states what a share actually conveys. Naming the type is not bookkeeping: a receiver that accepts kb-view must not thereby accept full, so the type is inside the signed share grant and is checked at both ends.",
     "closed_vocabulary": true,
@@ -152,14 +166,14 @@
     }
   },
   "trust_levels": {
-    "purpose": "What a node is believed to be, independent of what it is permitted to do. A node can be permitted and distrusted \u2014 that combination is the normal state of both sides of an unratified share, and collapsing the two would remove the signal that something needs review.",
+    "purpose": "What a node is believed to be, independent of what it is permitted to do. A node can be permitted and distrusted — that combination is the normal state of both sides of an unratified share, and collapsing the two would remove the signal that something needs review.",
     "levels": {
       "authenticated": {
-        "means": "Identity is in the signed registry, the fingerprint matches, and no share against it is unresolved.",
+        "means": "Identity is in the signed registry, the fingerprint matches, and no share against it is unresolved. A ratified share may still carry the `flagged` marker in `retained_flags` as evidence; the retained marker alone does not lower this level.",
         "shares_allowed": true
       },
       "flagged": {
-        "means": "A share was opened without ratification and has not been resolved either way. Everything the node touches is recorded as evidence.",
+        "means": "An accepted share has not been ratified, or a share carries a retained `flagged` marker. Everything the node touches is recorded as evidence. A flag is held for a human; telemetry may surface it, never clear it.",
         "shares_allowed": true,
         "flagged_note": "Flagged does not mean malicious. It means nobody has decided yet, and the cost of leaving that unrecorded is that nobody later can."
       },
@@ -170,7 +184,7 @@
     },
     "retained_after_ratification": true,
     "retained_rationale": "Ratification authorises the share; it does not erase that unapproved data crossed between nodes. The flag is kept so the record shows what actually happened, which is also what an EU AI Act evidence request asks for. A flag that disappeared on approval would make the interesting events unobservable.",
-    "who_moves_them": "Only the Master, and only as a signed event in the registry naming the reason. A model may summarise the evidence that justifies a change. It may not itself confer or lift a trust level.",
-    "never_a_grant": "A trust level never grants authority. It records a belief. Authority comes from key possession and the signed envelope, per master_capabilities above."
+    "who_moves_them": "Only the Master, and only as a signed event in the registry naming the reason. A peer's `kind=status` telemetry may surface a flag and its retained evidence, but it cannot move the level. A model may summarise the evidence that justifies a change; it may not itself confer or lift a trust level.",
+    "never_a_grant": "A trust level never grants authority. It records a belief. Authority comes from key possession and the signed envelope, per master_capabilities above. Telemetry surfacing is evidence for a human, never remediation."
   }
 }

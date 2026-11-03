@@ -25,6 +25,7 @@ while a GPU job is in flight.
 | `cmd/sparknet-control` | the master role: holds the signing key, dispatches signed tasks, verifies attested results |
 | `cmd/sparknet-agent` | a node: reports health, verifies signed tasks, executes a closed operation whitelist, returns attested results |
 | `cmd/sparknetctl` | operator CLI: keygen, fingerprint, capability list, route, registry sign/verify/revoke, live admin show/revoke/authorize/gpu/health/place, block decode/send |
+| `cmd/sparknet-memory` | per-vault typed memory and delegate-run service (loopback 4110; token-gated by the Python gateway) |
 | `cmd/sparknet-gpu` | GPU-telemetry sidecar: the one cgo binary, links NVML (go-nvlib) + DCGM (go-dcgm), publishes a node's GPU snapshot on the health subject |
 | `internal/authz` | fail-closed verification of signed envelopes + capability vocabulary + the signed node registry |
 | `internal/identity` | Ed25519 node identity + canonical fingerprint |
@@ -37,6 +38,8 @@ while a GPU job is in flight.
 | `internal/router` | edge / DGX / cluster escalation decisions |
 | `internal/gateway` | Go API gateway in front of a local vLLM upstream: SSE-aware proxy, `/readyz` readiness probe, `/v1/models` discovery |
 | `internal/ingest` | concurrent vault/git crawl + chunking for local RAG |
+| `internal/memory` | per-vault episodic, semantic, procedural, short-term and shared records; lexical retrieval, redaction, retention and export |
+| `internal/delegates` | validated delegate plans, durable runs/events, budgets, cancellation and handoff records |
 | `internal/embed` | OpenAI-compatible embeddings client, the ingest seam to the compute plane (no model, no CUDA) |
 | `internal/kvrouter` | client for a compute-plane RadixAttention engine: asks which node holds a prompt's cached KV prefix (no model, no CUDA) |
 | `internal/backup` | signed, content-addressed snapshot / verify / restore of a directory tree (pure Go I/O, no rsync) |
@@ -59,7 +62,7 @@ computation was *permitted*.
 ## Build and test
 
 ```sh
-make build          # bin/sparknet-control, bin/sparknet-agent, bin/sparknetctl (CGO_ENABLED=0)
+make build          # bin/sparknet-control, sparknet-agent, sparknetctl, sparknet-memory (CGO_ENABLED=0)
 make build-gpu      # bin/sparknet-gpu — the cgo GPU sidecar (links NVML/DCGM)
 make test           # all tests
 make lint           # build + vet + fmt-check + golangci-lint (.golangci.yml)

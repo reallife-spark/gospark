@@ -1,0 +1,40 @@
+# goSpark memory service — example config for `sparknet-memory`.
+#
+# The service is loopback-only. It stores typed memory and delegate runs per
+# vault; it holds no signing key and trusts only the local Python gateway.
+# The token is a secret: prefer GOSPARK_MEMORY_GATEWAY_TOKEN over this file.
+
+listen: 127.0.0.1:4110
+state_dir: /var/lib/sparknet/memory
+node_id: node-a
+gateway_token: ""
+
+# A vault path must resolve inside one of these roots. The role vault and every
+# provisioned peer-<user_id> vault belong here.
+allowed_vault_roots:
+  - /srv/sparknet/peer-node
+  - /srv/sparknet/knowledge
+
+# Per-type retention in days. Omitted types use the fabric defaults:
+# episodic 90, semantic 0 (vault-controlled), procedural 365, short_term 0,
+# shared 30.
+retention_days:
+  episodic: 90
+  procedural: 365
+  shared: 30
+
+# Optional delegate command. It is executed without a shell; `{task}`,
+# `{workspace}`, `{agent}` and `{run_id}` are expanded. An empty command leaves
+# the delegate harness disabled rather than guessing at an installed CLI.
+opencode_command: []
+
+max_request_bytes: 2097152
+
+# Optional semantic index. Empty embed_endpoint keeps lexical retrieval only.
+# Qdrant is not required for the service to start.
+qdrant_url: http://127.0.0.1:6333
+qdrant_api_key: ""
+qdrant_collection: sparknet-memory
+embed_endpoint: ""
+embed_secret: ""
+embed_model: ""

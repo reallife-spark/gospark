@@ -132,8 +132,8 @@ there.
 
 | Path | What it is |
 |---|---|
-| `cmd/` | The eight binaries. |
-| `internal/` | The 23 packages. Nothing outside `cmd/` may import them by path. |
+| `cmd/` | The nine binaries. |
+| `internal/` | The 25 packages. Nothing outside `cmd/` may import them by path. |
 | `proto/sparknet/v1/` | The on-wire contract: one `.proto` per family. |
 | `spec/sparknet/` | Read-only snapshots of the fabric's contract. |
 | `compute/` | The reference Python/CUDA worker and its `.example` env files. |
@@ -198,7 +198,7 @@ already has.
 
 ## 5. The packages
 
-23 packages under `internal/`. The ones worth knowing first:
+25 packages under `internal/`. The ones worth knowing first:
 
 ### The trust and identity core
 
@@ -240,6 +240,8 @@ already has.
 | `internal/kvtransfer` | The NVFP4 KV block codec — the canonical byte form and its inverse. |
 | `internal/transport` | The data plane: NVFP4 KV blocks streamed over HTTP/3 (QUIC), kept strictly separate from the control-plane bus. |
 | `internal/backup` | Signed, content-addressed snapshots of a directory tree, provable and restorable without shelling out to `rsync`. |
+| `internal/memory` | Per-vault typed memory: episodic, semantic, procedural, short-term and shared records, lexical retrieval, redaction, retention and export. |
+| `internal/delegates` | Validated delegate plans, durable runs/events, budgets, cancellation and handoff records. |
 
 ### The rest
 
@@ -252,7 +254,7 @@ by production code).
 
 ## 6. The binaries
 
-Eight, in `cmd/`:
+Nine, in `cmd/`:
 
 | Binary | What it does |
 |---|---|
@@ -263,6 +265,7 @@ Eight, in `cmd/`:
 | `sparknet-ingest` | The ingest driver. |
 | `sparknet-backup` | The backup daemon. |
 | `sparknet-mcp` | The read-only MCP server. |
+| `sparknet-memory` | The per-vault memory and delegate service (loopback 4110). |
 | `stub-vllm` | The CPU stand-in for the engine. |
 
 The split between `sparknet-control` and `sparknet-agent` mirrors the

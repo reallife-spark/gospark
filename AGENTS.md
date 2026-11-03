@@ -10,7 +10,8 @@ goSpark is the Go **control and service plane** for SparkNet: identity and
 capability verification (`internal/authz`, `internal/identity`), signed task
 dispatch and telemetry-aware placement (`internal/placement`), routing
 (`internal/router`), the API gateway (`internal/gateway`), the NATS/JetStream
-bus (`internal/bus`), and the NVFP4 KV-block data plane
+bus (`internal/bus`), the per-vault typed memory and delegate service
+(`internal/memory`, `internal/delegates`), and the NVFP4 KV-block data plane
 (`internal/kvtransfer`, `internal/transport`).
 
 It is a **sibling to the `sparknet` fabric, not a replacement.** The split
@@ -71,7 +72,8 @@ installed.
 ```
 cmd/            binaries: sparknet-control (Master), sparknet-agent (node),
                 sparknetctl (operator CLI), sparknet-gpu (cgo sidecar),
-                sparknet-ingest, sparknet-backup, sparknet-mcp, stub-vllm
+                sparknet-ingest, sparknet-backup, sparknet-mcp, sparknet-memory,
+                stub-vllm
 internal/       apiv1 authz backup bus compute config embed gateway gputel
                 identity ingest kvrouter kvtransfer mcp mesh metrics placement
                 registryfile router server telemetry testutil transport

@@ -22,6 +22,8 @@ const (
 	CapClusterDispatch Capability = "cluster-dispatch"
 	CapClusterServe    Capability = "cluster-serve"
 	CapAdminSupervise  Capability = "admin-supervise"
+	CapModelUplift     Capability = "model-uplift"
+	CapMemorySupervise Capability = "memory-supervise"
 
 	// CapCrossDepartmentShare lets a node share with one whose Master-attested
 	// department differs from its own. Inside a department no extra grant is
@@ -41,6 +43,8 @@ var KnownCapabilities = []Capability{
 	CapClusterServe,
 	CapAdminSupervise,
 	CapCrossDepartmentShare,
+	CapModelUplift,
+	CapMemorySupervise,
 }
 
 var knownSet = func() map[Capability]struct{} {
@@ -57,6 +61,7 @@ var sensitive = map[Capability]bool{
 	CapGuardApply:           true,
 	CapClusterServe:         true,
 	CapCrossDepartmentShare: true,
+	CapMemorySupervise:      true,
 }
 
 // MasterImpliedCapabilities are not granted to any peer: they are *implied by
