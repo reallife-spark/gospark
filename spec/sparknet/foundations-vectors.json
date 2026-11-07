@@ -19,11 +19,11 @@
         ],
         "payload": {
           "task_id": "task-1",
-          "note": "Über <ok> →"
+          "note": "\u00dcber <ok> \u2192"
         },
         "signature_b64": null
       },
-      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":null,\"event_id\":\"evt_0123456789abcdef\",\"event_type\":\"task.enqueued\",\"expires_at\":\"2099-01-01T00:15:00Z\",\"payload\":{\"note\":\"Über <ok> →\",\"task_id\":\"task-1\"},\"schema_version\":\"sparknet-event/1\",\"scope\":[\"01_Inbox/\"],\"sender_node_id\":\"sparknet-node-0002\",\"topic\":\"sparknet.task.blue\",\"vault_id\":\"\"}",
+      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":null,\"event_id\":\"evt_0123456789abcdef\",\"event_type\":\"task.enqueued\",\"expires_at\":\"2099-01-01T00:15:00Z\",\"payload\":{\"note\":\"\u00dcber <ok> \u2192\",\"task_id\":\"task-1\"},\"schema_version\":\"sparknet-event/1\",\"scope\":[\"01_Inbox/\"],\"sender_node_id\":\"sparknet-node-0002\",\"topic\":\"sparknet.task.blue\",\"vault_id\":\"\"}",
       "canonical_input": {
         "schema_version": "sparknet-event/1",
         "event_id": "evt_0123456789abcdef",
@@ -40,7 +40,7 @@
         ],
         "payload": {
           "task_id": "task-1",
-          "note": "Über <ok> →"
+          "note": "\u00dcber <ok> \u2192"
         }
       }
     },
@@ -52,7 +52,7 @@
           {
             "id": "peer-user-1:05_Knowledge/a.md",
             "path": "05_Knowledge/a.md",
-            "title": "Über A",
+            "title": "\u00dcber A",
             "category": "05_Knowledge",
             "tags": [],
             "classification": "internal",
@@ -83,14 +83,14 @@
         ],
         "unresolved": []
       },
-      "canonical": "{\"edges\":[{\"kind\":\"wikilink\",\"provenance\":{\"source\":\"05_Knowledge/a.md\",\"target\":\"05_Knowledge/b\"},\"source\":\"peer-user-1:05_Knowledge/a.md\",\"target\":\"peer-user-1:05_Knowledge/b.md\"}],\"nodes\":[{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/a.md\",\"path\":\"05_Knowledge/a.md\",\"tags\":[],\"title\":\"Über A\",\"vault_id\":\"peer-user-1\"},{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/b.md\",\"path\":\"05_Knowledge/b.md\",\"tags\":[],\"title\":\"B\",\"vault_id\":\"peer-user-1\"}],\"schema_version\":\"sparknet-graph/1\",\"unresolved\":[]}",
+      "canonical": "{\"edges\":[{\"kind\":\"wikilink\",\"provenance\":{\"source\":\"05_Knowledge/a.md\",\"target\":\"05_Knowledge/b\"},\"source\":\"peer-user-1:05_Knowledge/a.md\",\"target\":\"peer-user-1:05_Knowledge/b.md\"}],\"nodes\":[{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/a.md\",\"path\":\"05_Knowledge/a.md\",\"tags\":[],\"title\":\"\u00dcber A\",\"vault_id\":\"peer-user-1\"},{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/b.md\",\"path\":\"05_Knowledge/b.md\",\"tags\":[],\"title\":\"B\",\"vault_id\":\"peer-user-1\"}],\"schema_version\":\"sparknet-graph/1\",\"unresolved\":[]}",
       "canonical_input": {
         "schema_version": "sparknet-graph/1",
         "nodes": [
           {
             "id": "peer-user-1:05_Knowledge/a.md",
             "path": "05_Knowledge/a.md",
-            "title": "Über A",
+            "title": "\u00dcber A",
             "category": "05_Knowledge",
             "tags": [],
             "classification": "internal",
@@ -126,7 +126,7 @@
       "name": "hybrid.bundle",
       "input": {
         "schema_version": "sparknet-hybrid/1",
-        "query": "Über <ok> →",
+        "query": "\u00dcber <ok> \u2192",
         "semantic": [
           {
             "schema_version": "sparknet-hybrid-semantic/1",
@@ -134,7 +134,7 @@
             "source": "qdrant",
             "path": "05_Knowledge/a.md",
             "score": 0.5,
-            "text": "Über <ok> →",
+            "text": "\u00dcber <ok> \u2192",
             "classification": "internal",
             "provenance": {
               "source": "05_Knowledge/a.md",
@@ -150,7 +150,7 @@
             "action": "search",
             "result": {
               "hits": 2,
-              "note": "Über <ok> →"
+              "note": "\u00dcber <ok> \u2192"
             },
             "classification": "internal",
             "provenance": {
@@ -164,10 +164,10 @@
         "department": null,
         "vault_id": ""
       },
-      "canonical": "{\"agentic\":[{\"action\":\"search\",\"classification\":\"internal\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result\":{\"hits\":2,\"note\":\"Über <ok> →\"},\"result_id\":\"agt-1\",\"schema_version\":\"sparknet-hybrid-agentic/1\",\"tool\":\"vault_search\"}],\"classification\":\"internal\",\"department\":null,\"generated_at\":\"2099-01-01T00:00:00Z\",\"query\":\"Über <ok> →\",\"schema_version\":\"sparknet-hybrid/1\",\"semantic\":[{\"classification\":\"internal\",\"path\":\"05_Knowledge/a.md\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result_id\":\"sem-1\",\"schema_version\":\"sparknet-hybrid-semantic/1\",\"score\":0.5,\"source\":\"qdrant\",\"text\":\"Über <ok> →\"}],\"vault_id\":\"\"}",
+      "canonical": "{\"agentic\":[{\"action\":\"search\",\"classification\":\"internal\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result\":{\"hits\":2,\"note\":\"\u00dcber <ok> \u2192\"},\"result_id\":\"agt-1\",\"schema_version\":\"sparknet-hybrid-agentic/1\",\"tool\":\"vault_search\"}],\"classification\":\"internal\",\"department\":null,\"generated_at\":\"2099-01-01T00:00:00Z\",\"query\":\"\u00dcber <ok> \u2192\",\"schema_version\":\"sparknet-hybrid/1\",\"semantic\":[{\"classification\":\"internal\",\"path\":\"05_Knowledge/a.md\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result_id\":\"sem-1\",\"schema_version\":\"sparknet-hybrid-semantic/1\",\"score\":0.5,\"source\":\"qdrant\",\"text\":\"\u00dcber <ok> \u2192\"}],\"vault_id\":\"\"}",
       "canonical_input": {
         "schema_version": "sparknet-hybrid/1",
-        "query": "Über <ok> →",
+        "query": "\u00dcber <ok> \u2192",
         "semantic": [
           {
             "schema_version": "sparknet-hybrid-semantic/1",
@@ -175,7 +175,7 @@
             "source": "qdrant",
             "path": "05_Knowledge/a.md",
             "score": 0.5,
-            "text": "Über <ok> →",
+            "text": "\u00dcber <ok> \u2192",
             "classification": "internal",
             "provenance": {
               "source": "05_Knowledge/a.md",
@@ -191,7 +191,7 @@
             "action": "search",
             "result": {
               "hits": 2,
-              "note": "Über <ok> →"
+              "note": "\u00dcber <ok> \u2192"
             },
             "classification": "internal",
             "provenance": {
@@ -338,7 +338,7 @@
         "sender_node_id": "node-2",
         "sender_user_id": "user-2",
         "created_at": "2099-01-01T00:00:00Z",
-        "text": "Über <ok> →",
+        "text": "\u00dcber <ok> \u2192",
         "classification": "internal",
         "department": "blue",
         "provenance": {
@@ -346,7 +346,7 @@
           "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
       },
-      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":\"blue\",\"message_id\":\"msg-1\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"share-1\"},\"room_id\":\"room-1\",\"schema_version\":\"sparknet-collab-message/1\",\"sender_node_id\":\"node-2\",\"sender_user_id\":\"user-2\",\"text\":\"Über <ok> →\"}",
+      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":\"blue\",\"message_id\":\"msg-1\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"share-1\"},\"room_id\":\"room-1\",\"schema_version\":\"sparknet-collab-message/1\",\"sender_node_id\":\"node-2\",\"sender_user_id\":\"user-2\",\"text\":\"\u00dcber <ok> \u2192\"}",
       "canonical_input": {
         "schema_version": "sparknet-collab-message/1",
         "message_id": "msg-1",
@@ -354,7 +354,7 @@
         "sender_node_id": "node-2",
         "sender_user_id": "user-2",
         "created_at": "2099-01-01T00:00:00Z",
-        "text": "Über <ok> →",
+        "text": "\u00dcber <ok> \u2192",
         "classification": "internal",
         "department": "blue",
         "provenance": {
@@ -369,7 +369,7 @@
         "schema_version": "sparknet-package/1",
         "package_id": "tool",
         "version": "1.0.0",
-        "description": "Über <ok> →",
+        "description": "\u00dcber <ok> \u2192",
         "artifacts": [
           {
             "path": "bin/tool",
@@ -387,12 +387,12 @@
         "created_at": "2099-01-01T00:00:00Z",
         "signature_b64": "test-signature"
       },
-      "canonical": "{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"Über <ok> →\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}",
+      "canonical": "{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"\u00dcber <ok> \u2192\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}",
       "canonical_input": {
         "schema_version": "sparknet-package/1",
         "package_id": "tool",
         "version": "1.0.0",
-        "description": "Über <ok> →",
+        "description": "\u00dcber <ok> \u2192",
         "artifacts": [
           {
             "path": "bin/tool",
@@ -420,7 +420,7 @@
             "schema_version": "sparknet-package/1",
             "package_id": "tool",
             "version": "1.0.0",
-            "description": "Über <ok> →",
+            "description": "\u00dcber <ok> \u2192",
             "artifacts": [
               {
                 "path": "bin/tool",
@@ -441,7 +441,7 @@
         ],
         "signature_b64": "test-signature"
       },
-      "canonical": "{\"packages\":[{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"Über <ok> →\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signature_b64\":\"test-signature\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}],\"schema_version\":\"sparknet-package-index/1\",\"updated_at\":\"2099-01-01T00:00:00Z\"}",
+      "canonical": "{\"packages\":[{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"\u00dcber <ok> \u2192\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signature_b64\":\"test-signature\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}],\"schema_version\":\"sparknet-package-index/1\",\"updated_at\":\"2099-01-01T00:00:00Z\"}",
       "canonical_input": {
         "schema_version": "sparknet-package-index/1",
         "updated_at": "2099-01-01T00:00:00Z",
@@ -450,7 +450,7 @@
             "schema_version": "sparknet-package/1",
             "package_id": "tool",
             "version": "1.0.0",
-            "description": "Über <ok> →",
+            "description": "\u00dcber <ok> \u2192",
             "artifacts": [
               {
                 "path": "bin/tool",
@@ -469,6 +469,148 @@
             "signature_b64": "test-signature"
           }
         ]
+      }
+    },
+    {
+      "name": "agent.descriptor",
+      "input": {
+        "schema_version": "sparknet-agent/1",
+        "agent_id": "engineering",
+        "role": "engineering",
+        "enabled": true,
+        "topics": [
+          "sparknet.task.engineering",
+          "sparknet.result.engineering"
+        ],
+        "model_scope": "local-student",
+        "max_runtime_seconds": 300,
+        "max_concurrency": 2
+      },
+      "canonical": "{\"agent_id\":\"engineering\",\"enabled\":true,\"max_concurrency\":2,\"max_runtime_seconds\":300,\"model_scope\":\"local-student\",\"role\":\"engineering\",\"schema_version\":\"sparknet-agent/1\",\"topics\":[\"sparknet.task.engineering\",\"sparknet.result.engineering\"]}",
+      "canonical_input": {
+        "schema_version": "sparknet-agent/1",
+        "agent_id": "engineering",
+        "role": "engineering",
+        "enabled": true,
+        "topics": [
+          "sparknet.task.engineering",
+          "sparknet.result.engineering"
+        ],
+        "model_scope": "local-student",
+        "max_runtime_seconds": 300,
+        "max_concurrency": 2
+      }
+    },
+    {
+      "name": "self-improvement.run",
+      "input": {
+        "schema_version": "sparknet-self-improvement/1",
+        "run_id": "run-1",
+        "mode": "worktree",
+        "base_commit": "0123456789abcdef0123456789abcdef01234567",
+        "worktree": ".state/self-improve/worktrees/run-1",
+        "mutation_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "benchmark_suite": "sparknet-bench/1",
+        "metrics": {
+          "task_accuracy": {
+            "baseline": 0.8,
+            "candidate": 0.82
+          }
+        },
+        "thresholds": {
+          "task_accuracy": 0.81
+        },
+        "decision": "promote",
+        "created_at": "2099-01-01T00:00:00Z"
+      },
+      "canonical": "{\"base_commit\":\"0123456789abcdef0123456789abcdef01234567\",\"benchmark_suite\":\"sparknet-bench/1\",\"created_at\":\"2099-01-01T00:00:00Z\",\"decision\":\"promote\",\"metrics\":{\"task_accuracy\":{\"baseline\":0.8,\"candidate\":0.82}},\"mode\":\"worktree\",\"mutation_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"run_id\":\"run-1\",\"schema_version\":\"sparknet-self-improvement/1\",\"thresholds\":{\"task_accuracy\":0.81},\"worktree\":\".state/self-improve/worktrees/run-1\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-self-improvement/1",
+        "run_id": "run-1",
+        "mode": "worktree",
+        "base_commit": "0123456789abcdef0123456789abcdef01234567",
+        "worktree": ".state/self-improve/worktrees/run-1",
+        "mutation_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "benchmark_suite": "sparknet-bench/1",
+        "metrics": {
+          "task_accuracy": {
+            "baseline": 0.8,
+            "candidate": 0.82
+          }
+        },
+        "thresholds": {
+          "task_accuracy": 0.81
+        },
+        "decision": "promote",
+        "created_at": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "release.manifest",
+      "input": {
+        "schema_version": "sparknet-release/1",
+        "release_id": "rel-1",
+        "version": "1.0.0",
+        "channel": "stable",
+        "artifacts": [
+          {
+            "path": "packages/index.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 123
+          }
+        ],
+        "package_index_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "signer_node_id": "master",
+        "created_at": "2099-01-01T00:00:00Z"
+      },
+      "canonical": "{\"artifacts\":[{\"path\":\"packages/index.json\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"size\":123}],\"channel\":\"stable\",\"created_at\":\"2099-01-01T00:00:00Z\",\"package_index_sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"release_id\":\"rel-1\",\"schema_version\":\"sparknet-release/1\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-release/1",
+        "release_id": "rel-1",
+        "version": "1.0.0",
+        "channel": "stable",
+        "artifacts": [
+          {
+            "path": "packages/index.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 123
+          }
+        ],
+        "package_index_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "signer_node_id": "master",
+        "created_at": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "data-lake.record",
+      "input": {
+        "schema_version": "sparknet-data-lake/1",
+        "record_id": "dl-1",
+        "node_id": "sparknet-node-0002",
+        "user_id": "U-00001",
+        "consent": true,
+        "kind": "teacher-trace",
+        "classification": "confidential",
+        "department": "blue",
+        "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 456,
+        "retention_days": 30,
+        "created_at": "2099-01-01T00:00:00Z"
+      },
+      "canonical": "{\"classification\":\"confidential\",\"consent\":true,\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":\"blue\",\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"kind\":\"teacher-trace\",\"node_id\":\"sparknet-node-0002\",\"record_id\":\"dl-1\",\"retention_days\":30,\"schema_version\":\"sparknet-data-lake/1\",\"size\":456,\"user_id\":\"U-00001\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-data-lake/1",
+        "record_id": "dl-1",
+        "node_id": "sparknet-node-0002",
+        "user_id": "U-00001",
+        "consent": true,
+        "kind": "teacher-trace",
+        "classification": "confidential",
+        "department": "blue",
+        "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 456,
+        "retention_days": 30,
+        "created_at": "2099-01-01T00:00:00Z"
       }
     }
   ]

@@ -26,14 +26,18 @@ func TestTypedFormsMatchCanonicalVectors(t *testing.T) {
 		t.Fatalf("decode vectors: %v", err)
 	}
 	targets := map[string]func() any{
-		"event.message":   func() any { return &EventEnvelope{} },
-		"graph.graph":     func() any { return &Graph{} },
-		"hybrid.bundle":   func() any { return &HybridBundle{} },
-		"exec.request":    func() any { return &ExecRequest{} },
-		"collab.room":     func() any { return &CollabRoom{} },
-		"collab.message":  func() any { return &CollabMessage{} },
-		"package.package": func() any { return &PackageManifest{} },
-		"package.index":   func() any { return &PackageIndex{} },
+		"event.message":        func() any { return &EventEnvelope{} },
+		"graph.graph":          func() any { return &Graph{} },
+		"hybrid.bundle":        func() any { return &HybridBundle{} },
+		"exec.request":         func() any { return &ExecRequest{} },
+		"collab.room":          func() any { return &CollabRoom{} },
+		"collab.message":       func() any { return &CollabMessage{} },
+		"package.package":      func() any { return &PackageManifest{} },
+		"package.index":        func() any { return &PackageIndex{} },
+		"agent.descriptor":     func() any { return &AgentDescriptor{} },
+		"self-improvement.run": func() any { return &SelfImprovementRun{} },
+		"release.manifest":     func() any { return &ReleaseManifest{} },
+		"data-lake.record":     func() any { return &DataLakeRecord{} },
 	}
 	for _, vector := range file.Vectors {
 		newTarget, ok := targets[vector.Name]

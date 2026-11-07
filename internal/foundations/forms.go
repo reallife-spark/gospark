@@ -220,3 +220,68 @@ type ABACDecision struct {
 	Classification string   `json:"classification"`
 	EffectiveScope []string `json:"effective_scope"`
 }
+
+// AgentDescriptor is a bounded event-driven worker. It carries no capability.
+type AgentDescriptor struct {
+	SchemaVersion     string   `json:"schema_version"`
+	AgentID           string   `json:"agent_id"`
+	Role              string   `json:"role"`
+	Enabled           bool     `json:"enabled"`
+	Topics            []string `json:"topics"`
+	ModelScope        string   `json:"model_scope,omitempty"`
+	MaxRuntimeSeconds int      `json:"max_runtime_seconds"`
+	MaxConcurrency    int      `json:"max_concurrency"`
+}
+
+// SelfImprovementRun is a mutation/benchmark record; promotion is separate.
+type SelfImprovementRun struct {
+	SchemaVersion  string         `json:"schema_version"`
+	RunID          string         `json:"run_id"`
+	Mode           string         `json:"mode"`
+	BaseCommit     string         `json:"base_commit"`
+	Worktree       string         `json:"worktree"`
+	MutationSHA256 string         `json:"mutation_sha256"`
+	BenchmarkSuite string         `json:"benchmark_suite"`
+	Metrics        map[string]any `json:"metrics"`
+	Thresholds     map[string]any `json:"thresholds"`
+	Decision       string         `json:"decision"`
+	CreatedAt      string         `json:"created_at"`
+	SignatureB64   *string        `json:"signature_b64,omitempty"`
+}
+
+// ReleaseArtifact is one immutable file in a release.
+type ReleaseArtifact struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+// ReleaseManifest binds a version to artifacts and a package index.
+type ReleaseManifest struct {
+	SchemaVersion      string            `json:"schema_version"`
+	ReleaseID          string            `json:"release_id"`
+	Version            string            `json:"version"`
+	Channel            string            `json:"channel"`
+	Artifacts          []ReleaseArtifact `json:"artifacts"`
+	PackageIndexSHA256 string            `json:"package_index_sha256"`
+	SignerNodeID       string            `json:"signer_node_id"`
+	CreatedAt          string            `json:"created_at"`
+	SignatureB64       *string           `json:"signature_b64,omitempty"`
+}
+
+// DataLakeRecord is consented training/backup evidence, never an answer corpus.
+type DataLakeRecord struct {
+	SchemaVersion  string  `json:"schema_version"`
+	RecordID       string  `json:"record_id"`
+	NodeID         string  `json:"node_id"`
+	UserID         string  `json:"user_id"`
+	Consent        bool    `json:"consent"`
+	Kind           string  `json:"kind"`
+	Classification string  `json:"classification"`
+	Department     *string `json:"department"`
+	Digest         string  `json:"digest"`
+	Size           int64   `json:"size"`
+	RetentionDays  int     `json:"retention_days"`
+	CreatedAt      string  `json:"created_at"`
+	SignatureB64   *string `json:"signature_b64,omitempty"`
+}
