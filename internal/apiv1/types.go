@@ -110,8 +110,13 @@ type NodeAuthorization struct {
 	// Department is the Master-attested department of this node's owner. Nil
 	// when none has been attested. It is inside the signed envelope, so only the
 	// Master can move a node between departments.
-	Department   *string `json:"department,omitempty"`
-	SignatureB64 string  `json:"signature_b64"`
+	Department *string `json:"department,omitempty"`
+	// NodePubkeyB64 is the node's Ed25519 identity public key, attested by the
+	// Master inside the signed envelope. It is outside the identity projection,
+	// so it does not change the node fingerprint; it lets the Master verify
+	// results signed by the node. Nil when no key has been bound.
+	NodePubkeyB64 *string `json:"node_pubkey_b64,omitempty"`
+	SignatureB64  string  `json:"signature_b64"`
 }
 
 // NodeRegistry is the set of signed node authorizations, distributed to peers

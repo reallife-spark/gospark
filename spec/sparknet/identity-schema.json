@@ -34,7 +34,8 @@
     "issued_at",
     "expires_at",
     "revoked",
-    "department"
+    "department",
+    "node_pubkey_b64"
   ],
   "signed_envelope_note": "Signing only the identity would leave capabilities and overlay_ipv4 mutable by anyone who can edit the registry file, escalating a node to guard-apply without the Master approving it. revoked is inside the envelope so only the Master can flip it. department is inside it because it gates cross-department sharing, so an unsigned one would be a privilege boundary anyone with registry write access could move. contracts/registry-schema.json states the same envelope for the registry document; both are pinned against shared/sparknet-authz.py::SIGNED_FIELDS, so they cannot drift apart silently. Adding a field here changes the bytes the Master signs, which stops every existing entry signature verifying - adopt it by re-signing and re-publishing at a higher sequence, never by editing entries in place.",
   "registry": {

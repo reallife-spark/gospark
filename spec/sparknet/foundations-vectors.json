@@ -1,0 +1,475 @@
+{
+  "schema_version": "sparknet-foundation-vectors/1",
+  "vectors": [
+    {
+      "name": "event.message",
+      "input": {
+        "schema_version": "sparknet-event/1",
+        "event_id": "evt_0123456789abcdef",
+        "event_type": "task.enqueued",
+        "topic": "sparknet.task.blue",
+        "sender_node_id": "sparknet-node-0002",
+        "created_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z",
+        "classification": "internal",
+        "department": null,
+        "vault_id": "",
+        "scope": [
+          "01_Inbox/"
+        ],
+        "payload": {
+          "task_id": "task-1",
+          "note": "Über <ok> →"
+        },
+        "signature_b64": null
+      },
+      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":null,\"event_id\":\"evt_0123456789abcdef\",\"event_type\":\"task.enqueued\",\"expires_at\":\"2099-01-01T00:15:00Z\",\"payload\":{\"note\":\"Über <ok> →\",\"task_id\":\"task-1\"},\"schema_version\":\"sparknet-event/1\",\"scope\":[\"01_Inbox/\"],\"sender_node_id\":\"sparknet-node-0002\",\"topic\":\"sparknet.task.blue\",\"vault_id\":\"\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-event/1",
+        "event_id": "evt_0123456789abcdef",
+        "event_type": "task.enqueued",
+        "topic": "sparknet.task.blue",
+        "sender_node_id": "sparknet-node-0002",
+        "created_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z",
+        "classification": "internal",
+        "department": null,
+        "vault_id": "",
+        "scope": [
+          "01_Inbox/"
+        ],
+        "payload": {
+          "task_id": "task-1",
+          "note": "Über <ok> →"
+        }
+      }
+    },
+    {
+      "name": "graph.graph",
+      "input": {
+        "schema_version": "sparknet-graph/1",
+        "nodes": [
+          {
+            "id": "peer-user-1:05_Knowledge/a.md",
+            "path": "05_Knowledge/a.md",
+            "title": "Über A",
+            "category": "05_Knowledge",
+            "tags": [],
+            "classification": "internal",
+            "department": null,
+            "vault_id": "peer-user-1"
+          },
+          {
+            "id": "peer-user-1:05_Knowledge/b.md",
+            "path": "05_Knowledge/b.md",
+            "title": "B",
+            "category": "05_Knowledge",
+            "tags": [],
+            "classification": "internal",
+            "department": null,
+            "vault_id": "peer-user-1"
+          }
+        ],
+        "edges": [
+          {
+            "source": "peer-user-1:05_Knowledge/a.md",
+            "target": "peer-user-1:05_Knowledge/b.md",
+            "kind": "wikilink",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "target": "05_Knowledge/b"
+            }
+          }
+        ],
+        "unresolved": []
+      },
+      "canonical": "{\"edges\":[{\"kind\":\"wikilink\",\"provenance\":{\"source\":\"05_Knowledge/a.md\",\"target\":\"05_Knowledge/b\"},\"source\":\"peer-user-1:05_Knowledge/a.md\",\"target\":\"peer-user-1:05_Knowledge/b.md\"}],\"nodes\":[{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/a.md\",\"path\":\"05_Knowledge/a.md\",\"tags\":[],\"title\":\"Über A\",\"vault_id\":\"peer-user-1\"},{\"category\":\"05_Knowledge\",\"classification\":\"internal\",\"department\":null,\"id\":\"peer-user-1:05_Knowledge/b.md\",\"path\":\"05_Knowledge/b.md\",\"tags\":[],\"title\":\"B\",\"vault_id\":\"peer-user-1\"}],\"schema_version\":\"sparknet-graph/1\",\"unresolved\":[]}",
+      "canonical_input": {
+        "schema_version": "sparknet-graph/1",
+        "nodes": [
+          {
+            "id": "peer-user-1:05_Knowledge/a.md",
+            "path": "05_Knowledge/a.md",
+            "title": "Über A",
+            "category": "05_Knowledge",
+            "tags": [],
+            "classification": "internal",
+            "department": null,
+            "vault_id": "peer-user-1"
+          },
+          {
+            "id": "peer-user-1:05_Knowledge/b.md",
+            "path": "05_Knowledge/b.md",
+            "title": "B",
+            "category": "05_Knowledge",
+            "tags": [],
+            "classification": "internal",
+            "department": null,
+            "vault_id": "peer-user-1"
+          }
+        ],
+        "edges": [
+          {
+            "source": "peer-user-1:05_Knowledge/a.md",
+            "target": "peer-user-1:05_Knowledge/b.md",
+            "kind": "wikilink",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "target": "05_Knowledge/b"
+            }
+          }
+        ],
+        "unresolved": []
+      }
+    },
+    {
+      "name": "hybrid.bundle",
+      "input": {
+        "schema_version": "sparknet-hybrid/1",
+        "query": "Über <ok> →",
+        "semantic": [
+          {
+            "schema_version": "sparknet-hybrid-semantic/1",
+            "result_id": "sem-1",
+            "source": "qdrant",
+            "path": "05_Knowledge/a.md",
+            "score": 0.5,
+            "text": "Über <ok> →",
+            "classification": "internal",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "agentic": [
+          {
+            "schema_version": "sparknet-hybrid-agentic/1",
+            "result_id": "agt-1",
+            "tool": "vault_search",
+            "action": "search",
+            "result": {
+              "hits": 2,
+              "note": "Über <ok> →"
+            },
+            "classification": "internal",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "generated_at": "2099-01-01T00:00:00Z",
+        "classification": "internal",
+        "department": null,
+        "vault_id": ""
+      },
+      "canonical": "{\"agentic\":[{\"action\":\"search\",\"classification\":\"internal\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result\":{\"hits\":2,\"note\":\"Über <ok> →\"},\"result_id\":\"agt-1\",\"schema_version\":\"sparknet-hybrid-agentic/1\",\"tool\":\"vault_search\"}],\"classification\":\"internal\",\"department\":null,\"generated_at\":\"2099-01-01T00:00:00Z\",\"query\":\"Über <ok> →\",\"schema_version\":\"sparknet-hybrid/1\",\"semantic\":[{\"classification\":\"internal\",\"path\":\"05_Knowledge/a.md\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"05_Knowledge/a.md\"},\"result_id\":\"sem-1\",\"schema_version\":\"sparknet-hybrid-semantic/1\",\"score\":0.5,\"source\":\"qdrant\",\"text\":\"Über <ok> →\"}],\"vault_id\":\"\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-hybrid/1",
+        "query": "Über <ok> →",
+        "semantic": [
+          {
+            "schema_version": "sparknet-hybrid-semantic/1",
+            "result_id": "sem-1",
+            "source": "qdrant",
+            "path": "05_Knowledge/a.md",
+            "score": 0.5,
+            "text": "Über <ok> →",
+            "classification": "internal",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "agentic": [
+          {
+            "schema_version": "sparknet-hybrid-agentic/1",
+            "result_id": "agt-1",
+            "tool": "vault_search",
+            "action": "search",
+            "result": {
+              "hits": 2,
+              "note": "Über <ok> →"
+            },
+            "classification": "internal",
+            "provenance": {
+              "source": "05_Knowledge/a.md",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        ],
+        "generated_at": "2099-01-01T00:00:00Z",
+        "classification": "internal",
+        "department": null,
+        "vault_id": ""
+      }
+    },
+    {
+      "name": "exec.request",
+      "input": {
+        "schema_version": "sparknet-exec-request/1",
+        "request_id": "req-1",
+        "node_id": "sparknet-node-0002",
+        "user_id": "user-1",
+        "argv": [
+          "git",
+          "status",
+          "--short"
+        ],
+        "cwd": "05_Knowledge",
+        "env": {
+          "HOME": "/home/user",
+          "PATH": "/usr/bin"
+        },
+        "timeout_seconds": 30,
+        "operator_os": {
+          "uid": 1000,
+          "euid": 1000,
+          "username": "raxxar",
+          "groups": [
+            "users"
+          ],
+          "is_root": false
+        },
+        "capabilities": [
+          "p2p-sync"
+        ],
+        "nonce": "nonce-1",
+        "issued_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z",
+        "signature_b64": "test-signature"
+      },
+      "canonical": "{\"argv\":[\"git\",\"status\",\"--short\"],\"capabilities\":[\"p2p-sync\"],\"cwd\":\"05_Knowledge\",\"env\":{\"HOME\":\"/home/user\",\"PATH\":\"/usr/bin\"},\"expires_at\":\"2099-01-01T00:15:00Z\",\"issued_at\":\"2099-01-01T00:00:00Z\",\"node_id\":\"sparknet-node-0002\",\"nonce\":\"nonce-1\",\"operator_os\":{\"euid\":1000,\"groups\":[\"users\"],\"is_root\":false,\"uid\":1000,\"username\":\"raxxar\"},\"request_id\":\"req-1\",\"schema_version\":\"sparknet-exec-request/1\",\"timeout_seconds\":30,\"user_id\":\"user-1\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-exec-request/1",
+        "request_id": "req-1",
+        "node_id": "sparknet-node-0002",
+        "user_id": "user-1",
+        "argv": [
+          "git",
+          "status",
+          "--short"
+        ],
+        "cwd": "05_Knowledge",
+        "env": {
+          "HOME": "/home/user",
+          "PATH": "/usr/bin"
+        },
+        "timeout_seconds": 30,
+        "operator_os": {
+          "uid": 1000,
+          "euid": 1000,
+          "username": "raxxar",
+          "groups": [
+            "users"
+          ],
+          "is_root": false
+        },
+        "capabilities": [
+          "p2p-sync"
+        ],
+        "nonce": "nonce-1",
+        "issued_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z"
+      }
+    },
+    {
+      "name": "collab.room",
+      "input": {
+        "schema_version": "sparknet-collab-room/1",
+        "room_id": "room-1",
+        "owner_node_id": "node-1",
+        "participants": [
+          {
+            "node_id": "node-1",
+            "user_id": "user-1",
+            "department": "blue",
+            "role": "owner"
+          },
+          {
+            "node_id": "node-2",
+            "user_id": "user-2",
+            "department": "blue",
+            "role": "participant"
+          }
+        ],
+        "classification": "internal",
+        "department": "blue",
+        "created_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z",
+        "status": "open",
+        "cross_department_approved": false
+      },
+      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"cross_department_approved\":false,\"department\":\"blue\",\"expires_at\":\"2099-01-01T00:15:00Z\",\"owner_node_id\":\"node-1\",\"participants\":[{\"department\":\"blue\",\"node_id\":\"node-1\",\"role\":\"owner\",\"user_id\":\"user-1\"},{\"department\":\"blue\",\"node_id\":\"node-2\",\"role\":\"participant\",\"user_id\":\"user-2\"}],\"room_id\":\"room-1\",\"schema_version\":\"sparknet-collab-room/1\",\"status\":\"open\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-collab-room/1",
+        "room_id": "room-1",
+        "owner_node_id": "node-1",
+        "participants": [
+          {
+            "node_id": "node-1",
+            "user_id": "user-1",
+            "department": "blue",
+            "role": "owner"
+          },
+          {
+            "node_id": "node-2",
+            "user_id": "user-2",
+            "department": "blue",
+            "role": "participant"
+          }
+        ],
+        "classification": "internal",
+        "department": "blue",
+        "created_at": "2099-01-01T00:00:00Z",
+        "expires_at": "2099-01-01T00:15:00Z",
+        "status": "open",
+        "cross_department_approved": false
+      }
+    },
+    {
+      "name": "collab.message",
+      "input": {
+        "schema_version": "sparknet-collab-message/1",
+        "message_id": "msg-1",
+        "room_id": "room-1",
+        "sender_node_id": "node-2",
+        "sender_user_id": "user-2",
+        "created_at": "2099-01-01T00:00:00Z",
+        "text": "Über <ok> →",
+        "classification": "internal",
+        "department": "blue",
+        "provenance": {
+          "source": "share-1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "canonical": "{\"classification\":\"internal\",\"created_at\":\"2099-01-01T00:00:00Z\",\"department\":\"blue\",\"message_id\":\"msg-1\",\"provenance\":{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"share-1\"},\"room_id\":\"room-1\",\"schema_version\":\"sparknet-collab-message/1\",\"sender_node_id\":\"node-2\",\"sender_user_id\":\"user-2\",\"text\":\"Über <ok> →\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-collab-message/1",
+        "message_id": "msg-1",
+        "room_id": "room-1",
+        "sender_node_id": "node-2",
+        "sender_user_id": "user-2",
+        "created_at": "2099-01-01T00:00:00Z",
+        "text": "Über <ok> →",
+        "classification": "internal",
+        "department": "blue",
+        "provenance": {
+          "source": "share-1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "name": "package.package",
+      "input": {
+        "schema_version": "sparknet-package/1",
+        "package_id": "tool",
+        "version": "1.0.0",
+        "description": "Über <ok> →",
+        "artifacts": [
+          {
+            "path": "bin/tool",
+            "sha256": "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
+            "size": 8
+          }
+        ],
+        "dependencies": [
+          {
+            "package_id": "lib",
+            "version": "1.0.0"
+          }
+        ],
+        "signer_node_id": "master",
+        "created_at": "2099-01-01T00:00:00Z",
+        "signature_b64": "test-signature"
+      },
+      "canonical": "{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"Über <ok> →\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-package/1",
+        "package_id": "tool",
+        "version": "1.0.0",
+        "description": "Über <ok> →",
+        "artifacts": [
+          {
+            "path": "bin/tool",
+            "sha256": "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
+            "size": 8
+          }
+        ],
+        "dependencies": [
+          {
+            "package_id": "lib",
+            "version": "1.0.0"
+          }
+        ],
+        "signer_node_id": "master",
+        "created_at": "2099-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "package.index",
+      "input": {
+        "schema_version": "sparknet-package-index/1",
+        "updated_at": "2099-01-01T00:00:00Z",
+        "packages": [
+          {
+            "schema_version": "sparknet-package/1",
+            "package_id": "tool",
+            "version": "1.0.0",
+            "description": "Über <ok> →",
+            "artifacts": [
+              {
+                "path": "bin/tool",
+                "sha256": "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
+                "size": 8
+              }
+            ],
+            "dependencies": [
+              {
+                "package_id": "lib",
+                "version": "1.0.0"
+              }
+            ],
+            "signer_node_id": "master",
+            "created_at": "2099-01-01T00:00:00Z",
+            "signature_b64": "test-signature"
+          }
+        ],
+        "signature_b64": "test-signature"
+      },
+      "canonical": "{\"packages\":[{\"artifacts\":[{\"path\":\"bin/tool\",\"sha256\":\"c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c\",\"size\":8}],\"created_at\":\"2099-01-01T00:00:00Z\",\"dependencies\":[{\"package_id\":\"lib\",\"version\":\"1.0.0\"}],\"description\":\"Über <ok> →\",\"package_id\":\"tool\",\"schema_version\":\"sparknet-package/1\",\"signature_b64\":\"test-signature\",\"signer_node_id\":\"master\",\"version\":\"1.0.0\"}],\"schema_version\":\"sparknet-package-index/1\",\"updated_at\":\"2099-01-01T00:00:00Z\"}",
+      "canonical_input": {
+        "schema_version": "sparknet-package-index/1",
+        "updated_at": "2099-01-01T00:00:00Z",
+        "packages": [
+          {
+            "schema_version": "sparknet-package/1",
+            "package_id": "tool",
+            "version": "1.0.0",
+            "description": "Über <ok> →",
+            "artifacts": [
+              {
+                "path": "bin/tool",
+                "sha256": "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
+                "size": 8
+              }
+            ],
+            "dependencies": [
+              {
+                "package_id": "lib",
+                "version": "1.0.0"
+              }
+            ],
+            "signer_node_id": "master",
+            "created_at": "2099-01-01T00:00:00Z",
+            "signature_b64": "test-signature"
+          }
+        ]
+      }
+    }
+  ]
+}

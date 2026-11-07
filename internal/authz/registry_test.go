@@ -278,7 +278,7 @@ func TestAuthorizationMessageMatchesFabric(t *testing.T) {
 	}
 	want := `{"capabilities":["cluster-serve","telemetry"],"department":null,"expires_at":"2027-01-02T03:04:05Z","fingerprint":"` +
 		entry.Fingerprint + `","identity":{"node_id":"node-a","overlay_ipv4":"10.100.0.7","requested_capabilities":[],"role":"peer","wireguard_public_key_b64":"` +
-		a.PublicKeyB64() + `"},"issued_at":"2026-01-02T03:04:05Z","overlay_ipv4":"10.100.0.7","revoked":false}`
+		a.PublicKeyB64() + `"},"issued_at":"2026-01-02T03:04:05Z","node_pubkey_b64":null,"overlay_ipv4":"10.100.0.7","revoked":false}`
 	if string(msg) != want {
 		t.Fatalf("authorization message mismatch:\n got %s\nwant %s", msg, want)
 	}

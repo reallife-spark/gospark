@@ -51,6 +51,9 @@ type signedEnvelope struct {
 	// attested no department. Two canonical forms for one logical entry is the
 	// ambiguity the byte-for-byte rule exists to prevent.
 	Department *string `json:"department"`
+	// No omitempty for the same reason: the fabric always projects this key,
+	// as null when no node signing key is bound.
+	NodePubkeyB64 *string `json:"node_pubkey_b64"`
 }
 
 // AuthorizationMessage returns the canonical bytes the Master signs for one
@@ -58,14 +61,15 @@ type signedEnvelope struct {
 // different bytes.
 func AuthorizationMessage(entry *apiv1.NodeAuthorization) ([]byte, error) {
 	env := signedEnvelope{
-		Fingerprint:  entry.Fingerprint,
-		Identity:     normaliseIdentity(entry.Identity),
-		Capabilities: sortedCaps(entry.Capabilities),
-		OverlayIPv4:  entry.OverlayIPv4,
-		IssuedAt:     entry.IssuedAt,
-		ExpiresAt:    entry.ExpiresAt,
-		Revoked:      entry.Revoked,
-		Department:   entry.Department,
+		Fingerprint:   entry.Fingerprint,
+		Identity:      normaliseIdentity(entry.Identity),
+		Capabilities:  sortedCaps(entry.Capabilities),
+		OverlayIPv4:   entry.OverlayIPv4,
+		IssuedAt:      entry.IssuedAt,
+		ExpiresAt:     entry.ExpiresAt,
+		Revoked:       entry.Revoked,
+		Department:    entry.Department,
+		NodePubkeyB64: entry.NodePubkeyB64,
 	}
 	return apiv1.CanonicalJSON(env)
 }
