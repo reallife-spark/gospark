@@ -231,6 +231,8 @@ type AgentDescriptor struct {
 	ModelScope        string   `json:"model_scope,omitempty"`
 	MaxRuntimeSeconds int      `json:"max_runtime_seconds"`
 	MaxConcurrency    int      `json:"max_concurrency"`
+	MaxClassification string   `json:"max_classification,omitempty"`
+	Departments       []string `json:"departments,omitempty"`
 }
 
 // SelfImprovementRun is a mutation/benchmark record; promotion is separate.
