@@ -624,6 +624,9 @@ func (v *Vault) Import(bundle Bundle, replace bool) (ImportResult, error) {
 			result.Rejected++
 			continue
 		}
+		record.Text = Redact(record.Text)
+		record.Summary = Redact(record.Summary)
+		record.ContentHash = hashRecord(&record)
 		if existingID, ok := v.hashes[record.ContentHash]; ok {
 			if existing, ok := v.records[existingID]; ok {
 				if existing.SourceRef == record.SourceRef && existing.Text == record.Text {
@@ -814,3 +817,6 @@ func recencyScore(created string, now time.Time) float64 {
 func round(value float64) float64 {
 	return math.Round(value*10000) / 10000
 }
+
+// ScopeMatches exposes the same scope predicate Vault.Query uses.
+func ScopeMatches(record Scope, want Scope) bool { return scopeMatches(record, want) }

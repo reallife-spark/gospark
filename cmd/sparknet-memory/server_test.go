@@ -36,6 +36,7 @@ func newTestService(t *testing.T) (*service, string, string) {
 		MaxRequestBytes:   1 << 20,
 		OpenCodeCommand:   []string{"/bin/echo", "{task}"},
 	}, manager, nil)
+	t.Cleanup(service.Close)
 	return service, vaultRoot, filepath.Join(vaultRoot, "peer-alice")
 }
 

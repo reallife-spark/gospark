@@ -264,7 +264,7 @@ func TestPlaceAndDispatchToChosenNode(t *testing.T) {
 	}
 
 	results := watchResults(ctx, t, shared)
-	node, dec, err := control.PlaceAndDispatch(ctx, signedTask(t, controlID, "t-auto"), req.Requirement)
+	node, dec, err := control.PlaceAndDispatch(ctx, signedTask(t, controlID, "t-auto", "node-b"), req.Requirement)
 	if err != nil {
 		t.Fatalf("PlaceAndDispatch: %v", err)
 	}

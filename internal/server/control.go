@@ -154,6 +154,18 @@ func (a *App) ReSignRegistry(ctx context.Context, authorizations []apiv1.NodeAut
 	return digest, nil
 }
 
+func cloneRegistry(doc *apiv1.NodeRegistry) (*apiv1.NodeRegistry, error) {
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	var clone apiv1.NodeRegistry
+	if err := json.Unmarshal(raw, &clone); err != nil {
+		return nil, err
+	}
+	return &clone, nil
+}
+
 // mutateRegistry is the single write path for the served registry: it applies
 // mutate under the write lock, re-signs every entry with a fresh stamp,
 // installs the new view, refreshes the executor keys and re-publishes. Both a
@@ -164,16 +176,22 @@ func (a *App) mutateRegistry(ctx context.Context, mutate func(*apiv1.NodeRegistr
 		return "", fmt.Errorf("server: no registry configured")
 	}
 	a.regMu.Lock()
-	if err := mutate(a.registryDoc); err != nil {
+	candidate, err := cloneRegistry(a.registryDoc)
+	if err != nil {
 		a.regMu.Unlock()
 		return "", err
 	}
-	if err := authz.SignRegistry(a.id, a.registryDoc); err != nil {
+	if err := mutate(candidate); err != nil {
 		a.regMu.Unlock()
 		return "", err
 	}
-	a.nodeRegistry = authz.NewRegistry(a.registryDoc)
-	doc := a.registryDoc
+	if err := authz.SignRegistry(a.id, candidate); err != nil {
+		a.regMu.Unlock()
+		return "", err
+	}
+	a.registryDoc = candidate
+	a.nodeRegistry = authz.NewRegistry(candidate)
+	doc := candidate
 	digest, err := authz.RegistryDigest(doc)
 	a.regMu.Unlock()
 	if err != nil {
@@ -317,6 +335,9 @@ func (a *App) DispatchTask(ctx context.Context, nodeID string, env apiv1.TaskEnv
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("dispatch refused: draining")
 		return fmt.Errorf("server: control plane is draining")
+	}
+	if env.TargetNodeID != "" && env.TargetNodeID != nodeID {
+		return fmt.Errorf("server: task target %q does not match dispatch node %q", env.TargetNodeID, nodeID)
 	}
 	if err := a.authorizeNode(nodeID, authz.CapClusterServe); err != nil {
 		a.counters.TasksRefused.Add(1)

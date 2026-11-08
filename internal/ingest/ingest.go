@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -88,6 +89,9 @@ func Crawl(ctx context.Context, root string, opts Options) ([]Chunk, error) {
 			}
 			return nil
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
 		if _, ok := exts[strings.ToLower(filepath.Ext(path))]; !ok {
 			return nil
 		}
@@ -147,7 +151,19 @@ func Crawl(ctx context.Context, root string, opts Options) ([]Chunk, error) {
 }
 
 func chunkFile(root, path string, o Options) ([]Chunk, error) {
-	data, err := os.ReadFile(path)
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, err
+	}
+	relPath, err := filepath.Rel(resolvedRoot, resolvedPath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+		return nil, fmt.Errorf("ingest: %s escapes the crawl root", path)
+	}
+	data, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return nil, err
 	}

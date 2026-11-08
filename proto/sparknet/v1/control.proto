@@ -109,6 +109,8 @@ message NodeAuthorization {
   string expires_at = 6;            // ISO-8601
   bool revoked = 7;                 // inside the signature: only the Master flips it
   string signature_b64 = 8;         // Master operational key over the signed envelope
+  optional string department = 9;    // Master-attested department (signed)
+  optional string node_pubkey_b64 = 10; // node signing key bound by the Master (signed)
 }
 
 // NodeRegistry is the set of signed node authorizations. The document itself is

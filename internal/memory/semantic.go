@@ -124,6 +124,7 @@ func (q *QdrantIndex) Upsert(ctx context.Context, record *Record) error {
 		"project_id":      record.Scope.ProjectID,
 		"thread_id":       record.Scope.ThreadID,
 		"workflow_id":     record.Scope.WorkflowID,
+		"agent_id":        record.Scope.AgentID,
 		"retention_state": string(record.RetentionState),
 		"content_hash":    record.ContentHash,
 	}
@@ -186,6 +187,7 @@ func (q *QdrantIndex) Search(
 	for key, value := range map[string]string{
 		"user_id": scope.UserID, "project_id": scope.ProjectID,
 		"thread_id": scope.ThreadID, "workflow_id": scope.WorkflowID,
+		"agent_id": scope.AgentID,
 	} {
 		if value != "" {
 			must = append(must, map[string]any{"key": key, "match": map[string]any{"value": value}})

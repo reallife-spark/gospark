@@ -152,6 +152,7 @@ func signedControlTask(t *testing.T, id *identity.Identity, op, params string) a
 		Fingerprint:        id.Fingerprint(),
 		Capabilities:       []string{string(authz.CapClusterServe)},
 		TaskID:             "task-integration",
+		TargetNodeID:       "node-a",
 		Operation:          op,
 		ParamsJSON:         params,
 		ContentInSignature: true,

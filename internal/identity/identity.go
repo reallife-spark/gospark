@@ -178,7 +178,32 @@ func (id *Identity) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, ".identity-*")
+	if err != nil {
+		return fmt.Errorf("identity: temp: %w", err)
+	}
+	tempName := temp.Name()
+	defer os.Remove(tempName)
+	if err := temp.Chmod(0o600); err != nil {
+		temp.Close()
+		return fmt.Errorf("identity: chmod: %w", err)
+	}
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return fmt.Errorf("identity: write: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return fmt.Errorf("identity: sync: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("identity: close: %w", err)
+	}
+	if err := os.Rename(tempName, path); err != nil {
+		return fmt.Errorf("identity: rename: %w", err)
+	}
+	return os.Chmod(path, 0o600)
 }
 
 // Load reads a key file. A verify-only node may omit the private key.

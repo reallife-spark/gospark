@@ -97,11 +97,6 @@ func run() error {
 			case <-ctx.Done():
 				return
 			}
-			env, err := signTask(id, *op, *params, *ttl)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "sparknet-control: build task:", err)
-				return
-			}
 			if *dispatch == "auto" {
 				// A node may not have reported in yet; poll placement until one
 				// is eligible or the timeout elapses.
@@ -109,6 +104,11 @@ func run() error {
 				for {
 					dec := app.Place(placement.Request{}, authz.CapClusterServe)
 					if dec.NodeID != "" {
+						env, err := signTask(id, dec.NodeID, *op, *params, *ttl)
+						if err != nil {
+							fmt.Fprintln(os.Stderr, "sparknet-control: build task:", err)
+							return
+						}
 						if err := app.DispatchTask(ctx, dec.NodeID, env); err != nil {
 							fmt.Fprintln(os.Stderr, "sparknet-control: auto-dispatch:", err)
 							return
@@ -127,6 +127,11 @@ func run() error {
 					}
 				}
 			}
+			env, err := signTask(id, *dispatch, *op, *params, *ttl)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "sparknet-control: build task:", err)
+				return
+			}
 			if err := app.DispatchTask(ctx, *dispatch, env); err != nil {
 				fmt.Fprintln(os.Stderr, "sparknet-control: dispatch:", err)
 			}
@@ -135,7 +140,7 @@ func run() error {
 	return app.Run(ctx)
 }
 
-func signTask(id *identity.Identity, op, params string, ttl time.Duration) (apiv1.TaskEnvelope, error) {
+func signTask(id *identity.Identity, target, op, params string, ttl time.Duration) (apiv1.TaskEnvelope, error) {
 	nonce, err := randomHex(16)
 	if err != nil {
 		return apiv1.TaskEnvelope{}, err
@@ -145,6 +150,7 @@ func signTask(id *identity.Identity, op, params string, ttl time.Duration) (apiv
 		Fingerprint:        id.Fingerprint(),
 		Capabilities:       []string{"cluster-serve"},
 		TaskID:             "task-" + nonce[:12],
+		TargetNodeID:       target,
 		Operation:          op,
 		ParamsJSON:         params,
 		ContentInSignature: true,

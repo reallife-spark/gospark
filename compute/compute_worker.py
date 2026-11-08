@@ -29,6 +29,7 @@ make an unreachable engine a hard error instead.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import os
@@ -64,8 +65,15 @@ def _authorize(request: Request) -> None:
     against a node that also sends no secret.
     """
     if not SHARED_SECRET:
+        bind = os.getenv("COMPUTE_LISTEN_HOST", "127.0.0.1")
+        if bind not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="shared secret is required on a non-loopback bind",
+            )
         return
-    if request.headers.get(API_KEY_NAME) != SHARED_SECRET:
+    supplied = request.headers.get(API_KEY_NAME) or ""
+    if not hmac.compare_digest(supplied, SHARED_SECRET):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="invalid Sparknet authorization token",
@@ -187,7 +195,11 @@ async def execute(request: Request) -> JSONResponse:
 async def _infer(params: dict) -> str:
     prompt = str(params.get("prompt", ""))
     max_tokens = int(params.get("max_tokens", 1024))
+    if not 1 <= max_tokens <= 8192:
+        raise HTTPException(status_code=400, detail="max_tokens must be 1..8192")
     temperature = float(params.get("temperature", 0.2))
+    if not 0.0 <= temperature <= 2.0:
+        raise HTTPException(status_code=400, detail="temperature must be 0..2")
     payload = {
         "model": VLLM_MODEL,
         "messages": [{"role": "user", "content": prompt}],
@@ -224,6 +236,8 @@ def _embed(params: dict) -> str:
     """
     text = str(params.get("text", ""))
     dim = int(params.get("dim", EMBED_DIM))
+    if not 1 <= dim <= 4096:
+        raise HTTPException(status_code=400, detail="dim must be 1..4096")
     return json.dumps(_embed_vector(text, dim))
 
 

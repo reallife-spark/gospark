@@ -215,6 +215,11 @@ func (a *App) AdminAuthorize(ctx context.Context, proj apiv1.NodeIdentity, capab
 	digest, err := a.mutateRegistry(ctx, func(doc *apiv1.NodeRegistry) error {
 		for i := range doc.Authorizations {
 			if doc.Authorizations[i].Identity.NodeID == entry.Identity.NodeID {
+				// A capability update must not erase the Master's revocation
+				// or attested department; those are separate signed decisions.
+				entry.Revoked = doc.Authorizations[i].Revoked
+				entry.Department = doc.Authorizations[i].Department
+				entry.NodePubkeyB64 = doc.Authorizations[i].NodePubkeyB64
 				doc.Authorizations[i] = entry
 				return nil
 			}

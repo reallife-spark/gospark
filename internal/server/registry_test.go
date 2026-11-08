@@ -159,13 +159,18 @@ func publishTask(ctx context.Context, b bus.Bus, nodeID string, env apiv1.TaskEn
 	return b.Publish(ctx, bus.Subject("sparknet", bus.KindTask, nodeID), data)
 }
 
-func signedTask(t *testing.T, id *identity.Identity, taskID string) apiv1.TaskEnvelope {
+func signedTask(t *testing.T, id *identity.Identity, taskID string, target ...string) apiv1.TaskEnvelope {
 	t.Helper()
+	targetNode := "node-a"
+	if len(target) > 0 && target[0] != "" {
+		targetNode = target[0]
+	}
 	now := time.Now()
 	env := apiv1.TaskEnvelope{
 		Fingerprint:        id.Fingerprint(),
 		Capabilities:       []string{string(authz.CapClusterServe)},
 		TaskID:             taskID,
+		TargetNodeID:       targetNode,
 		Operation:          "arith",
 		ParamsJSON:         `{"expression":"6*7"}`,
 		ContentInSignature: true,

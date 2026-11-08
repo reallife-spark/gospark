@@ -138,6 +138,7 @@ type TaskEnvelope struct {
 	Fingerprint        string   `json:"fingerprint"`
 	Capabilities       []string `json:"capabilities"`
 	TaskID             string   `json:"task_id"`
+	TargetNodeID       string   `json:"target_node_id,omitempty"`
 	Operation          string   `json:"operation"`
 	ParamsJSON         string   `json:"params_json"`
 	ContentInSignature bool     `json:"content_in_signature"`

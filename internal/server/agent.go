@@ -163,6 +163,10 @@ func (a *App) onTask(ctx context.Context, _ string, data []byte) error {
 	}
 	// The gating capability for delegated compute. compute-serve was folded
 	// into cluster-serve in the fabric vocabulary; goSpark follows that.
+	if env.TargetNodeID != a.id.NodeID {
+		a.counters.TasksRefused.Add(1)
+		return fmt.Errorf("server: task %s is addressed to %q, not %q", env.TaskID, env.TargetNodeID, a.id.NodeID)
+	}
 	if err := a.verifier.VerifyTask(a.masterPub, &env, authz.CapClusterServe); err != nil {
 		a.counters.TasksRefused.Add(1)
 		a.log.Warn("task refused", "task", env.TaskID, "err", err)

@@ -25,6 +25,8 @@ type Broker struct {
 	now       func() time.Time
 
 	mu      sync.Mutex
+	rootCtx context.Context
+	cancel  context.CancelFunc
 	plans   map[string]context.CancelFunc
 	done    map[string]chan struct{}
 	stopped bool
@@ -36,10 +38,13 @@ func NewBroker(store *Store, executors []Executor) *Broker {
 	if store == nil {
 		panic("delegates: nil store")
 	}
+	rootCtx, cancel := context.WithCancel(context.Background())
 	b := &Broker{
 		store:     store,
 		executors: map[Harness]Executor{},
 		now:       time.Now,
+		rootCtx:   rootCtx,
+		cancel:    cancel,
 		plans:     map[string]context.CancelFunc{},
 		done:      map[string]chan struct{}{},
 	}
@@ -53,6 +58,11 @@ func NewBroker(store *Store, executors []Executor) *Broker {
 
 // Start validates a plan, creates its runs and launches execution.
 func (b *Broker) Start(ctx context.Context, plan Plan) ([]Run, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 	ordered, err := plan.Validate()
 	if err != nil {
 		return nil, err
@@ -62,7 +72,7 @@ func (b *Broker) Start(ctx context.Context, plan Plan) ([]Run, error) {
 			return nil, fmt.Errorf("delegates: no executor for harness %q", task.Harness)
 		}
 	}
-	runCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(b.rootCtx)
 	runs := make([]*Run, 0, len(ordered))
 	byTask := make(map[string]*Run, len(ordered))
 	stamp := b.now().UTC().Format(time.RFC3339Nano)
@@ -147,6 +157,7 @@ func (b *Broker) Close() {
 	for _, cancel := range b.plans {
 		cancel()
 	}
+	b.cancel()
 	b.mu.Unlock()
 }
 
@@ -293,8 +304,12 @@ func (e *CommandExecutor) Run(ctx context.Context, run *Run, emit func(Event)) (
 	env := safeEnvironment(e.Env, run.Task.Permissions.AllowedEnv)
 	cmd.Env = env
 	emit(Event{Type: "command", Data: map[string]any{"command": strings.Join(append([]string{e.Command[0]}, args...), " ")}})
-	output, err := cmd.CombinedOutput()
-	text := string(output)
+	var output boundedBuffer
+	output.max = 1 << 20
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	err := cmd.Run()
+	text := output.String()
 	result := Result{
 		Output:  text,
 		Summary: firstLines(text, 20),
@@ -347,7 +362,7 @@ func safeEnvironment(extra, allowed []string) []string {
 			out = append(out, entry)
 			continue
 		}
-		if _, ok := allow[name]; ok {
+		if _, ok := allow[name]; ok && !secretEnvName(name) {
 			out = append(out, entry)
 		}
 	}
@@ -368,3 +383,35 @@ func errString(err error) string {
 	}
 	return err.Error()
 }
+
+func secretEnvName(name string) bool {
+	upper := strings.ToUpper(name)
+	if strings.HasPrefix(upper, "GOSPARK_") {
+		return true
+	}
+	for _, suffix := range []string{"_TOKEN", "_SECRET", "_KEY", "_PASSWORD", "_CREDENTIAL", "_PRIVATE"} {
+		if strings.HasSuffix(upper, suffix) {
+			return true
+		}
+	}
+	return upper == "TOKEN" || upper == "SECRET" || upper == "PASSWORD"
+}
+
+type boundedBuffer struct {
+	buf []byte
+	max int
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if len(b.buf) < b.max {
+		remaining := b.max - len(b.buf)
+		if len(p) > remaining {
+			b.buf = append(b.buf, p[:remaining]...)
+		} else {
+			b.buf = append(b.buf, p...)
+		}
+	}
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string { return string(b.buf) }

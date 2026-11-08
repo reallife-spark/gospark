@@ -53,6 +53,7 @@ func signedTaskWithParams(t *testing.T, id *identity.Identity, taskID, paramsJSO
 		Fingerprint:        id.Fingerprint(),
 		Capabilities:       []string{string(authz.CapClusterServe)},
 		TaskID:             taskID,
+		TargetNodeID:       "node-a",
 		Operation:          "arith",
 		ParamsJSON:         paramsJSON,
 		ContentInSignature: true,

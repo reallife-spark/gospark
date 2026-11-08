@@ -206,7 +206,27 @@ func (s *service) query(w http.ResponseWriter, r *http.Request, markUse bool) {
 		if semanticErr != nil {
 			s.warn("semantic search skipped", "vault_id", v.ID, "error", semanticErr)
 		} else {
-			hits = mergeSemantic(v, hits, semanticHits, body.TopK, markUse)
+			filtered := semanticHits[:0]
+			for _, hit := range semanticHits {
+				record, ok := v.Get(hit.ID)
+				if !ok || !memory.ScopeMatches(record.Scope, body.Scope) {
+					continue
+				}
+				if len(body.MemoryTypes) > 0 {
+					matched := false
+					for _, t := range body.MemoryTypes {
+						if record.Type == t {
+							matched = true
+							break
+						}
+					}
+					if !matched {
+						continue
+					}
+				}
+				filtered = append(filtered, hit)
+			}
+			hits = mergeSemantic(v, hits, filtered, body.TopK, markUse)
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "vault_id": v.ID, "hits": hits, "count": len(hits)})
@@ -688,4 +708,11 @@ func stateDirFromEnv() string {
 		return filepath.Join(value, "memory")
 	}
 	return ""
+}
+
+// Close stops every delegate broker owned by this service.
+func (s *service) Close() {
+	for _, entry := range s.brokers {
+		entry.broker.Close()
+	}
 }
