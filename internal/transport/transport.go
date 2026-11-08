@@ -41,6 +41,10 @@ type Server struct {
 	// (tests, LocalAddr reporting) read it here.
 	Ready chan<- net.Addr
 
+	// ClientFingerprint, if set, requires mutual TLS: the connecting peer must
+	// present a client certificate whose hex SHA-256 matches this value.
+	ClientFingerprint string
+
 	// tlsOnce caches the listener certificate so its fingerprint is available to
 	// a peer before the stream arrives.
 	tlsOnce        sync.Once
@@ -81,9 +85,23 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	if s.tlsErr != nil {
 		return s.tlsErr
 	}
+	if s.ClientFingerprint != "" {
+		s.tlsConf.ClientAuth = tls.RequireAnyClientCert
+		want := strings.ToLower(strings.TrimSpace(s.ClientFingerprint))
+		s.tlsConf.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if len(rawCerts) == 0 {
+				return errors.New("transport: client presented no certificate")
+			}
+			if got := CertFingerprint(rawCerts[0]); got != want {
+				return fmt.Errorf("transport: client certificate fingerprint mismatch: got %s want %s", got, want)
+			}
+			return nil
+		}
+	}
 	ln, err := quic.ListenAddr(s.Addr, s.tlsConf, &quic.Config{
-		MaxIdleTimeout:  30 * time.Second,
-		KeepAlivePeriod: 10 * time.Second,
+		MaxIdleTimeout:     30 * time.Second,
+		KeepAlivePeriod:    10 * time.Second,
+		MaxIncomingStreams: 64,
 	})
 	if err != nil {
 		return fmt.Errorf("transport: listen %s: %w", s.Addr, err)
@@ -179,6 +197,10 @@ type DialOptions struct {
 	// certificate (see Server.Fingerprint and CertFingerprint). When set, the
 	// dial fails unless the presented certificate matches exactly.
 	PinnedFingerprint string
+
+	// ClientCertificate, if non-nil, is presented for mutual TLS. The server
+	// pins its fingerprint via Server.ClientFingerprint.
+	ClientCertificate *tls.Certificate
 }
 
 // clientTLS builds the dialer's TLS config. With a pin, verification is done by
@@ -192,6 +214,9 @@ func clientTLS(opts DialOptions) (*tls.Config, error) {
 		// The peer certificate is not CA-issued; when pinned we verify it
 		// ourselves in VerifyPeerCertificate, so the default chain check is off.
 		InsecureSkipVerify: true,
+	}
+	if opts.ClientCertificate != nil {
+		conf.Certificates = []tls.Certificate{*opts.ClientCertificate}
 	}
 	pin := strings.TrimSpace(opts.PinnedFingerprint)
 	if pin == "" {
@@ -211,8 +236,10 @@ func clientTLS(opts DialOptions) (*tls.Config, error) {
 }
 
 // SendBlock streams a block to addr and returns the server's ack. It performs
-// no peer authentication; prefer SendBlockWithOptions with a pinned
-// fingerprint outside a single-process test.
+// no peer authentication and exists only for the in-process transport test.
+// Callers outside that test must use SendBlockWithOptions with a pin.
+//
+// Deprecated: use SendBlockWithOptions with DialOptions.PinnedFingerprint.
 func SendBlock(ctx context.Context, addr string, blockID, originNodeID string, b *kvtransfer.Block, chunkSize int) (string, error) {
 	return SendBlockWithOptions(ctx, addr, blockID, originNodeID, b, chunkSize, DialOptions{})
 }

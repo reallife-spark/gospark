@@ -693,6 +693,9 @@ func cmdSendBlock(args []string) error {
 	if *addr == "" || *file == "" {
 		return fmt.Errorf("send-block: -addr and -file are required")
 	}
+	if *pin == "" {
+		return fmt.Errorf("send-block: -pin is required; an unpinned data-plane peer is unauthenticated")
+	}
 	data, err := os.ReadFile(*file)
 	if err != nil {
 		return err

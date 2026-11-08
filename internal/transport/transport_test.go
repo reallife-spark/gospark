@@ -122,3 +122,45 @@ func TestCertFingerprintStable(t *testing.T) {
 		t.Fatalf("sha256 hex should be 64 chars")
 	}
 }
+
+func TestMutualTLSRequiresPinnedClientCertificate(t *testing.T) {
+	// A data-plane listener with ClientFingerprint is mutual TLS: the peer must
+	// present the exact client cert, not merely reach the port. The server's own
+	// fingerprint is still pinned by the client, so both directions are checked.
+	clientCert, clientFingerprint, err := transport.NewEphemeralClientCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan net.Addr, 1)
+	srv := &transport.Server{
+		Addr:              "127.0.0.1:0",
+		Ready:             ready,
+		ClientFingerprint: clientFingerprint,
+		Handler: func(_ context.Context, _ apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
+			return b.Digest(), nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.ListenAndServe(ctx) }()
+	var addr net.Addr
+	select {
+	case addr = <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server never became ready")
+	}
+	block := sampleBlock(t)
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer sendCancel()
+	if _, err := transport.SendBlockWithOptions(sendCtx, addr.String(), "mtls-1", "node-a", block, 8, transport.DialOptions{
+		PinnedFingerprint: srv.Fingerprint(),
+	}); err == nil {
+		t.Fatal("a client without a certificate must be refused")
+	}
+	if _, err := transport.SendBlockWithOptions(sendCtx, addr.String(), "mtls-2", "node-a", block, 8, transport.DialOptions{
+		PinnedFingerprint: srv.Fingerprint(),
+		ClientCertificate: &clientCert,
+	}); err != nil {
+		t.Fatalf("a pinned client certificate should be accepted: %v", err)
+	}
+}

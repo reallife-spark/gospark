@@ -26,30 +26,27 @@ func CertFingerprint(der []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// selfSignedTLS builds an ephemeral certificate for the data-plane listener and
-// returns it with the fingerprint a peer must pin.
-//
-// A deployed node replaces this with a certificate bound to its overlay
-// identity; the *pin* mechanism is what matters and does not change. The
-// scaffold generates a throwaway cert so the QUIC path is exercisable in one
-// process, but callers are expected to pin its fingerprint rather than skip
-// verification.
-func selfSignedTLS() (*tls.Config, string, error) {
+// ephemeralCertificate builds one short-lived self-signed certificate for the
+// data plane and returns it with the fingerprint a peer must pin. The usage is
+// explicit: a listener certificate is ServerAuth, a client certificate is
+// ClientAuth. A deployed node replaces this with a certificate bound to its
+// overlay identity; the pin mechanism is what stays the same.
+func ephemeralCertificate(usage x509.ExtKeyUsage, commonName string) (tls.Certificate, string, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, "", fmt.Errorf("transport: generate key: %w", err)
+		return tls.Certificate{}, "", fmt.Errorf("transport: generate key: %w", err)
 	}
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return nil, "", fmt.Errorf("transport: serial: %w", err)
+		return tls.Certificate{}, "", fmt.Errorf("transport: serial: %w", err)
 	}
 	tmpl := x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "gospark-data-plane"},
+		Subject:               pkix.Name{CommonName: commonName},
 		NotBefore:             time.Now().Add(-time.Minute),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{usage},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		DNSNames:              []string{"localhost"},
@@ -57,21 +54,36 @@ func selfSignedTLS() (*tls.Config, string, error) {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
 	if err != nil {
-		return nil, "", fmt.Errorf("transport: create cert: %w", err)
+		return tls.Certificate{}, "", fmt.Errorf("transport: create cert: %w", err)
 	}
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
-		return nil, "", fmt.Errorf("transport: marshal key: %w", err)
+		return tls.Certificate{}, "", fmt.Errorf("transport: marshal key: %w", err)
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		return nil, "", fmt.Errorf("transport: keypair: %w", err)
+		return tls.Certificate{}, "", fmt.Errorf("transport: keypair: %w", err)
+	}
+	return cert, CertFingerprint(der), nil
+}
+
+// selfSignedTLS builds the listener's TLS config and its pin.
+func selfSignedTLS() (*tls.Config, string, error) {
+	cert, fingerprint, err := ephemeralCertificate(x509.ExtKeyUsageServerAuth, "gospark-data-plane")
+	if err != nil {
+		return nil, "", err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{ALPN},
 		MinVersion:   tls.VersionTLS13,
-	}, CertFingerprint(der), nil
+	}, fingerprint, nil
+}
+
+// NewEphemeralClientCertificate builds a client certificate for mutual TLS.
+// The caller gives its fingerprint to the server's ClientFingerprint pin.
+func NewEphemeralClientCertificate() (tls.Certificate, string, error) {
+	return ephemeralCertificate(x509.ExtKeyUsageClientAuth, "gospark-data-plane-client")
 }
