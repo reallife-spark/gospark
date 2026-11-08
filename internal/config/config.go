@@ -63,6 +63,10 @@ type TransportConfig struct {
 	// AllowUnauthenticated explicitly permits an unpinned non-loopback listener.
 	// It exists for a single-process rehearsal, never for a deployment.
 	AllowUnauthenticated bool `yaml:"allow_unauthenticated"`
+	// ClientNodeIDs maps a pinned client-certificate fingerprint to the node id
+	// that certificate speaks for. A pinned listener requires this map so the
+	// block header's OriginNodeID is bound to the authenticated certificate.
+	ClientNodeIDs map[string]string `yaml:"client_node_ids"`
 }
 
 type GatewayConfig struct {

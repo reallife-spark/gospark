@@ -40,6 +40,8 @@ transport:
   # fingerprint is the same value `sparknetctl` prints.
   client_fingerprint: ""
   allow_unauthenticated: false
+  # Required when client_fingerprint is set: cert fingerprint -> node id.
+  client_node_ids: {}
 
 gateway:
   # The Go API gateway in front of the local compute plane.

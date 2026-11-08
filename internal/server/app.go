@@ -228,6 +228,7 @@ func (a *App) Run(ctx context.Context) error {
 		ChunkSize:            a.cfg.Transport.ChunkSize,
 		ClientFingerprint:    a.cfg.Transport.ClientFingerprint,
 		AllowUnauthenticated: a.cfg.Transport.AllowUnauthenticated,
+		ClientNodeIDs:        a.cfg.Transport.ClientNodeIDs,
 		Ready:                ready,
 		Handler: func(_ context.Context, h apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
 			digest := a.cache.Put(h.BlockID, b)

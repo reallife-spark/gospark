@@ -3,6 +3,7 @@ package transport_test
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,6 +137,7 @@ func TestMutualTLSRequiresPinnedClientCertificate(t *testing.T) {
 		Addr:              "127.0.0.1:0",
 		Ready:             ready,
 		ClientFingerprint: clientFingerprint,
+		ClientNodeIDs:     map[string]string{clientFingerprint: "node-a"},
 		Handler: func(_ context.Context, _ apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
 			return b.Digest(), nil
 		},
@@ -162,5 +164,44 @@ func TestMutualTLSRequiresPinnedClientCertificate(t *testing.T) {
 		ClientCertificate: &clientCert,
 	}); err != nil {
 		t.Fatalf("a pinned client certificate should be accepted: %v", err)
+	}
+}
+
+func TestMutualTLSBindsOriginNodeID(t *testing.T) {
+	clientCert, clientFingerprint, err := transport.NewEphemeralClientCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan net.Addr, 1)
+	srv := &transport.Server{
+		Addr:              "127.0.0.1:0",
+		Ready:             ready,
+		ClientFingerprint: clientFingerprint,
+		ClientNodeIDs:     map[string]string{clientFingerprint: "node-a"},
+		Handler: func(_ context.Context, _ apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
+			return b.Digest(), nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.ListenAndServe(ctx) }()
+	var addr net.Addr
+	select {
+	case addr = <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server never became ready")
+	}
+	block := sampleBlock(t)
+	sendCtx, sendCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer sendCancel()
+	ack, err := transport.SendBlockWithOptions(sendCtx, addr.String(), "origin-bad", "node-b", block, 8, transport.DialOptions{
+		PinnedFingerprint: srv.Fingerprint(),
+		ClientCertificate: &clientCert,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(ack, "ERR:block origin") {
+		t.Fatalf("ack = %q, want an origin refusal", ack)
 	}
 }

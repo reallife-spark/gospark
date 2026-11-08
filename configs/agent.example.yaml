@@ -43,6 +43,8 @@ transport:
   # fingerprint is the same value `sparknetctl` prints.
   client_fingerprint: ""
   allow_unauthenticated: false
+  # Required when client_fingerprint is set: cert fingerprint -> node id.
+  client_node_ids: {}
 
 gateway:
   listen: 127.0.0.1:8081

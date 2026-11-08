@@ -50,6 +50,10 @@ type Server struct {
 	// MaxInflightBytes bounds the memory reserved by concurrent streams. A
 	// stream reserves maxBlockBytes before reading; zero uses 256 MiB.
 	MaxInflightBytes int64
+	// ClientNodeIDs maps a pinned client certificate fingerprint to the node id
+	// that certificate speaks for. A listener with ClientFingerprint requires
+	// this map; it binds BlockHeader.OriginNodeID to the authenticated peer.
+	ClientNodeIDs map[string]string
 
 	inflightBytes int64
 	inflightMu    sync.Mutex
@@ -101,6 +105,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		return fmt.Errorf("transport: non-loopback listener %q has no client certificate pin", s.Addr)
 	}
 	if s.ClientFingerprint != "" {
+		if len(s.ClientNodeIDs) == 0 {
+			return errors.New("transport: a pinned listener requires client_node_ids for origin binding")
+		}
 		s.tlsConf.ClientAuth = tls.RequireAnyClientCert
 		want := strings.ToLower(strings.TrimSpace(s.ClientFingerprint))
 		s.tlsConf.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -143,17 +150,30 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 }
 
 func (s *Server) serveConn(ctx context.Context, conn *quic.Conn) {
+	authenticatedOrigin := ""
+	if s.ClientFingerprint != "" {
+		state := conn.ConnectionState()
+		if len(state.TLS.PeerCertificates) == 0 {
+			return
+		}
+		fingerprint := CertFingerprint(state.TLS.PeerCertificates[0].Raw)
+		nodeID, ok := s.ClientNodeIDs[fingerprint]
+		if !ok || nodeID == "" {
+			return
+		}
+		authenticatedOrigin = nodeID
+	}
 	for {
 		stream, err := conn.AcceptStream(ctx)
 		if err != nil {
 			return
 		}
-		go func() {
+		go func(origin string) {
 			defer stream.Close()
-			if err := s.handleStream(ctx, stream); err != nil {
+			if err := s.handleStream(ctx, stream, origin); err != nil {
 				_ = writeFrame(stream, []byte("ERR:"+err.Error()))
 			}
-		}()
+		}(authenticatedOrigin)
 	}
 }
 
@@ -176,7 +196,7 @@ func (s *Server) releaseStream() {
 	s.inflightMu.Unlock()
 }
 
-func (s *Server) handleStream(ctx context.Context, stream *quic.Stream) error {
+func (s *Server) handleStream(ctx context.Context, stream *quic.Stream, authenticatedOrigin string) error {
 	if !s.reserveStream() {
 		return errors.New("transport: in-flight block budget exhausted")
 	}
@@ -203,6 +223,9 @@ func (s *Server) handleStream(ctx context.Context, stream *quic.Stream) error {
 	}
 	if header.BlockID == "" || len(header.BlockID) > 256 {
 		return errors.New("invalid block id")
+	}
+	if authenticatedOrigin != "" && header.OriginNodeID != authenticatedOrigin {
+		return fmt.Errorf("block origin %q does not match authenticated peer %q", header.OriginNodeID, authenticatedOrigin)
 	}
 	if header.NumElements != uint32(block.NumElements) ||
 		header.NumBlocks != uint32((block.NumElements+kvtransfer.BlockSize-1)/kvtransfer.BlockSize) ||
