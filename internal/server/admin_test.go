@@ -318,3 +318,50 @@ func postJSON(t *testing.T, url, body string) map[string]any {
 	}
 	return out
 }
+
+func TestAdminSurfaceRequiresBearerToken(t *testing.T) {
+	controlID, _ := identity.Generate("control", identity.RoleMaster)
+	cfg := config.Default()
+	cfg.Admin.Token = "test-admin-token"
+	control, err := New(Options{Config: cfg, Identity: controlID, Role: RoleControl, Bus: bus.NewMemory()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(control.adminHandler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/admin/registry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("admin without token status = %d, want 401", resp.StatusCode)
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/admin/registry", nil)
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin with token status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestAdminRunRefusesListenerWithoutToken(t *testing.T) {
+	cfg := config.Default()
+	cfg.Gateway.Listen = "127.0.0.1:0"
+	cfg.Transport.Listen = "127.0.0.1:0"
+	cfg.Admin.Listen = "127.0.0.1:0"
+	controlID, _ := identity.Generate("control", identity.RoleMaster)
+	control, err := New(Options{Config: cfg, Identity: controlID, Role: RoleControl, Bus: bus.NewMemory()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Run(context.Background()); err == nil {
+		t.Fatal("Run enabled the admin listener without a token")
+	}
+}

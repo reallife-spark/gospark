@@ -54,6 +54,8 @@ type Server struct {
 	// AdminBase is the base URL of the control plane's loopback admin surface,
 	// e.g. http://127.0.0.1:8899.
 	AdminBase string
+	// AdminToken is sent as a bearer token; the admin surface requires it.
+	AdminToken string
 	// Client is the HTTP client; nil uses a client with Timeout.
 	Client *http.Client
 	// Timeout bounds one admin request when Client is nil.
@@ -260,6 +262,9 @@ func (s *Server) get(ctx context.Context, path string, q url.Values) (string, er
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", err
+	}
+	if s.AdminToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.AdminToken)
 	}
 	resp, err := s.client().Do(req)
 	if err != nil {

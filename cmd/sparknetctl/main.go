@@ -467,6 +467,9 @@ func adminRequest(addr, method, path string, body []byte) error {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if token := os.Getenv("GOSPARK_ADMIN_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err

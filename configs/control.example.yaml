@@ -84,6 +84,10 @@ admin:
   # and the server refuses to bind anything but a loopback address. Empty
   # (the default) disables it entirely.
   listen: "127.0.0.1:8899"
+  # Required whenever listen is set. Loopback is not an authorization boundary:
+  # any local process could otherwise re-sign the registry through this surface.
+  # Supply it via GOSPARK_ADMIN_TOKEN rather than committing a literal.
+  token: ""
 
 metrics:
   # Prometheus surface. /admin/metrics is always served on the admin listener

@@ -266,6 +266,9 @@ func (a *App) Run(ctx context.Context) error {
 		if err := requireLoopback(a.adminAddr); err != nil {
 			return err
 		}
+		if a.cfg.Admin.Token == "" {
+			return errors.New("server: admin listener requires admin.token (or GOSPARK_ADMIN_TOKEN)")
+		}
 		adminSrv := &http.Server{Addr: a.adminAddr, Handler: a.adminHandler()}
 		go func() {
 			a.log.Info("admin surface listening", "addr", a.adminAddr, "scope", "loopback-only")

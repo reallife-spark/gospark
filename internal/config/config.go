@@ -114,6 +114,10 @@ type RegistryConfig struct {
 // Empty disables the surface entirely (the default).
 type AdminConfig struct {
 	Listen string `yaml:"listen"`
+	// Token is required whenever Listen is set. The admin surface can re-sign
+	// the registry, so loopback alone is not an authorization boundary: any
+	// local process could otherwise revoke or authorize nodes.
+	Token string `yaml:"token"`
 }
 
 // MetricsConfig exposes the control plane's read-only Prometheus surface. The
@@ -268,6 +272,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_ADMIN_LISTEN"); v != "" {
 		cfg.Admin.Listen = v
+	}
+	if v := os.Getenv("GOSPARK_ADMIN_TOKEN"); v != "" {
+		cfg.Admin.Token = v
 	}
 	if v := os.Getenv("GOSPARK_METRICS_LISTEN"); v != "" {
 		cfg.Metrics.Listen = v

@@ -28,7 +28,7 @@ func run(args []string) error {
 	timeout := fs.Duration("timeout", 0, "per-request timeout (0 uses the default)")
 	_ = fs.Parse(args)
 
-	srv := &mcp.Server{AdminBase: *addr, Timeout: *timeout}
+	srv := &mcp.Server{AdminBase: *addr, AdminToken: os.Getenv("GOSPARK_ADMIN_TOKEN"), Timeout: *timeout}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

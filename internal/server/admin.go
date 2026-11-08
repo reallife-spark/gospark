@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/reallife-spark/goSpark/internal/apiv1"
@@ -51,7 +53,21 @@ func (a *App) adminHandler() http.Handler {
 	mux.HandleFunc("/admin/placement", a.handleAdminPlacement)
 	mux.HandleFunc("/admin/kvcache", a.handleAdminKVCache)
 	mux.HandleFunc("/admin/drain", a.handleAdminDrain)
-	return mux
+
+	token := a.cfg.Admin.Token
+	if token == "" {
+		// Unit tests exercise the mux directly; Run refuses an enabled admin
+		// listener without a token, so this branch is not reachable live.
+		return mux
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		supplied := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if len(supplied) != len(token) || subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) != 1 {
+			http.Error(w, "admin token required", http.StatusUnauthorized)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // handleAdminPlacement serves GET /admin/placement: it ranks the nodes the

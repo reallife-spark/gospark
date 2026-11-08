@@ -81,6 +81,7 @@ func TestEnvOverrides(t *testing.T) {
 	t.Setenv("GOSPARK_BUS_QUEUE", "control")
 	t.Setenv("GOSPARK_REGISTRY_FILE", "/etc/sparknet/registry.json")
 	t.Setenv("GOSPARK_ADMIN_LISTEN", "127.0.0.1:8899")
+	t.Setenv("GOSPARK_ADMIN_TOKEN", "env-admin-token")
 	t.Setenv("GOSPARK_LOG_LEVEL", "warn")
 	t.Setenv("GOSPARK_EDGE_TOKEN_CEILING", "777")
 
@@ -102,6 +103,9 @@ func TestEnvOverrides(t *testing.T) {
 	}
 	if cfg.Admin.Listen != "127.0.0.1:8899" {
 		t.Errorf("admin listen = %q", cfg.Admin.Listen)
+	}
+	if cfg.Admin.Token != "env-admin-token" {
+		t.Errorf("admin token = %q", cfg.Admin.Token)
 	}
 	if cfg.Log.Level != "warn" {
 		t.Errorf("log level = %q", cfg.Log.Level)

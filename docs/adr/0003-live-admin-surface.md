@@ -24,11 +24,14 @@ Add an HTTP admin surface to the control plane, bound **loopback-only** and
   cannot drift apart.
 - **An operator CLI, not a bespoke client.** `sparknetctl admin
   show|authorize|revoke` speaks to the surface, mirroring the on-disk
-  `registry` commands.
-- **Full authority implies a loopback binding.** The process holds the Master
-  private key, so the surface can grant, revoke and distribute at will. The
-  server refuses to bind any non-loopback address (`requireLoopback`) rather
-  than rely on an operator not to expose it.
+  `registry` commands. The CLI and MCP reader send the token from
+  `GOSPARK_ADMIN_TOKEN`.
+- **Full authority implies a loopback binding and a bearer token.** The process
+  holds the Master private key, so the surface can grant, revoke and distribute
+  at will. The server refuses to bind any non-loopback address
+  (`requireLoopback`) and refuses to start an enabled listener without
+  `admin.token` / `GOSPARK_ADMIN_TOKEN`. Loopback alone is not an authorization
+  boundary: any local process could otherwise re-sign the registry.
 
 ## Why not a remote admin API
 
