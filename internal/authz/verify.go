@@ -20,6 +20,7 @@ var (
 	ErrUnknownCapability = errors.New("authz: capability not in vocabulary")
 	ErrContentNotSigned  = errors.New("authz: content must be inside the signature")
 	ErrFingerprint       = errors.New("authz: fingerprint mismatch")
+	ErrMalformedEnvelope = errors.New("authz: malformed envelope")
 )
 
 // Clock is injectable so tests can pin "now".
@@ -78,13 +79,20 @@ func (v *Verifier) VerifyTask(signerPub []byte, env *apiv1.TaskEnvelope, require
 		return ErrBadSignature
 	}
 
-	// 3. Liveness against the injected clock.
+	// 3. Liveness against the injected clock. A missing or non-positive
+	// timestamp is malformed, never "never expires".
 	now := v.now().Unix()
-	if env.ExpiresAtUnix > 0 && now > env.ExpiresAtUnix {
+	if env.ExpiresAtUnix <= 0 || env.IssuedAtUnix <= 0 {
+		return ErrMalformedEnvelope
+	}
+	if now > env.ExpiresAtUnix {
 		return fmt.Errorf("%w: now=%d expires=%d", ErrExpired, now, env.ExpiresAtUnix)
 	}
-	if env.IssuedAtUnix > 0 && now < env.IssuedAtUnix {
+	if now < env.IssuedAtUnix {
 		return fmt.Errorf("%w: now=%d issued=%d", ErrNotYetValid, now, env.IssuedAtUnix)
+	}
+	if env.ExpiresAtUnix <= env.IssuedAtUnix {
+		return ErrMalformedEnvelope
 	}
 
 	// 4. Required capability present.
@@ -93,14 +101,15 @@ func (v *Verifier) VerifyTask(signerPub []byte, env *apiv1.TaskEnvelope, require
 	}
 
 	// 5. Replay guard last, so a malformed envelope never consumes a nonce.
-	if v.Nonces != nil {
-		ok, err := v.Nonces.Use(env.Nonce, time.Unix(env.ExpiresAtUnix, 0))
-		if err != nil {
-			return fmt.Errorf("authz: nonce store: %w", err)
-		}
-		if !ok {
-			return fmt.Errorf("%w: %q", ErrReplay, env.Nonce)
-		}
+	if v.Nonces == nil {
+		return fmt.Errorf("%w: no nonce store configured", ErrMalformedEnvelope)
+	}
+	ok, err := v.Nonces.Use(env.Nonce, time.Unix(env.ExpiresAtUnix, 0))
+	if err != nil {
+		return fmt.Errorf("authz: nonce store: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrReplay, env.Nonce)
 	}
 	return nil
 }

@@ -205,6 +205,12 @@ func VerifyAuthorization(masterPub ed25519.PublicKey, entry *apiv1.NodeAuthoriza
 			return fmt.Errorf("%w: node=%s cap=%q", ErrRegistryUnknownCap, entry.Identity.NodeID, c)
 		}
 	}
+	if _, ok := parseISO(entry.IssuedAt); !ok {
+		return fmt.Errorf("%w: node=%s has malformed issued_at", ErrRegistryMalformed, entry.Identity.NodeID)
+	}
+	if _, ok := parseISO(entry.ExpiresAt); !ok {
+		return fmt.Errorf("%w: node=%s has malformed expires_at", ErrRegistryMalformed, entry.Identity.NodeID)
+	}
 	fp, err := identity.FingerprintOf(entry.Identity)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrRegistryMalformed, err)
@@ -315,10 +321,18 @@ func (r *Registry) Authorized(nodeID string, cap Capability, now time.Time) erro
 	if e.Revoked {
 		return fmt.Errorf("%w: %q", ErrRegistryRevoked, nodeID)
 	}
-	if exp, ok := parseISO(e.ExpiresAt); ok && now.After(exp) {
+	exp, ok := parseISO(e.ExpiresAt)
+	if !ok {
+		return fmt.Errorf("%w: node=%s has malformed expires_at", ErrRegistryMalformed, nodeID)
+	}
+	if now.After(exp) {
 		return fmt.Errorf("%w: node=%s expires=%s", ErrRegistryExpired, nodeID, e.ExpiresAt)
 	}
-	if iss, ok := parseISO(e.IssuedAt); ok && now.Add(clockSkew).Before(iss) {
+	iss, ok := parseISO(e.IssuedAt)
+	if !ok {
+		return fmt.Errorf("%w: node=%s has malformed issued_at", ErrRegistryMalformed, nodeID)
+	}
+	if now.Add(clockSkew).Before(iss) {
 		return fmt.Errorf("%w: node=%s issued=%s", ErrRegistryNotYetValid, nodeID, e.IssuedAt)
 	}
 	if cap != "" && !hasCapability(e.Capabilities, cap) {

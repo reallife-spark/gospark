@@ -154,6 +154,8 @@ func (s *Server) handleStream(ctx context.Context, stream *quic.Stream) error {
 	return writeFrame(stream, []byte(ack))
 }
 
+const maxBlockBytes = 64 << 20
+
 func (s *Server) readChunks(r io.Reader) ([]byte, error) {
 	var out []byte
 	for {
@@ -163,6 +165,9 @@ func (s *Server) readChunks(r io.Reader) ([]byte, error) {
 		}
 		if len(chunk) == 0 {
 			return out, nil
+		}
+		if len(out)+len(chunk) > maxBlockBytes {
+			return nil, fmt.Errorf("block exceeds %d bytes", maxBlockBytes)
 		}
 		out = append(out, chunk...)
 	}

@@ -283,3 +283,21 @@ func TestAuthorizationMessageMatchesFabric(t *testing.T) {
 		t.Fatalf("authorization message mismatch:\n got %s\nwant %s", msg, want)
 	}
 }
+
+func TestVerifyAuthorizationRejectsMalformedTimestamps(t *testing.T) {
+	master := newSigner(t)
+	id, err := identity.Generate("node-timestamp", identity.RolePeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := authzEntry(t, master, id, authz.CapTelemetry)
+	entry.ExpiresAt = "not-a-timestamp"
+	if err := authz.VerifyAuthorization(master.Public, &entry); !errors.Is(err, authz.ErrRegistryMalformed) {
+		t.Fatalf("expected ErrRegistryMalformed for bad expires_at, got %v", err)
+	}
+	entry = authzEntry(t, master, id, authz.CapTelemetry)
+	entry.IssuedAt = "not-a-timestamp"
+	if err := authz.VerifyAuthorization(master.Public, &entry); !errors.Is(err, authz.ErrRegistryMalformed) {
+		t.Fatalf("expected ErrRegistryMalformed for bad issued_at, got %v", err)
+	}
+}

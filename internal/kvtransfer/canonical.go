@@ -23,6 +23,9 @@ func DecodeCanonical(buf []byte) (*Block, error) {
 		return nil, ErrEmpty
 	}
 	nblocks := (numElements + BlockSize - 1) / BlockSize
+	if nblocks > (len(buf)-12)/4 {
+		return nil, fmt.Errorf("kvtransfer: block scale table exceeds payload")
+	}
 	scales := make([]float32, nblocks)
 	for i := 0; i < nblocks; i++ {
 		if p+4 > len(buf) {

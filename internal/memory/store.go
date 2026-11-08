@@ -141,49 +141,41 @@ func (m *Manager) VaultForPath(path string) (*Vault, error) {
 	id := m.vaultID(abs)
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if existing, ok := m.open[id]; ok {
-		m.mu.Unlock()
 		return existing, nil
 	}
 	if _, exists := m.byID[id]; !exists {
 		m.byID[id] = abs
 		if err := m.saveCatalog(); err != nil {
 			delete(m.byID, id)
-			m.mu.Unlock()
 			return nil, err
 		}
 	}
-	m.mu.Unlock()
-
 	vault, err := openVault(m.cfg.Root, id, abs)
 	if err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
 	m.open[id] = vault
-	m.mu.Unlock()
 	return vault, nil
 }
 
 // VaultByID opens a vault from the catalog.
 func (m *Manager) VaultByID(id string) (*Vault, error) {
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	path, ok := m.byID[id]
-	existing := m.open[id]
-	m.mu.RUnlock()
 	if !ok {
 		return nil, ErrVaultNotFound
 	}
-	if existing != nil {
+	if existing := m.open[id]; existing != nil {
 		return existing, nil
 	}
 	vault, err := openVault(m.cfg.Root, id, path)
 	if err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
 	m.open[id] = vault
-	m.mu.Unlock()
 	return vault, nil
 }
 
@@ -551,15 +543,19 @@ func (v *Vault) SetPolicy(policy map[string]any) error {
 	return writeAtomic(filepath.Join(filepath.Dir(v.file), "policy.json"), append(payload, '\n'))
 }
 
-// Policy returns a copy of the local policy.
-func (v *Vault) Policy() map[string]any {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
+func (v *Vault) policyCopyLocked() map[string]any {
 	out := make(map[string]any, len(v.policy))
 	for key, value := range v.policy {
 		out[key] = value
 	}
 	return out
+}
+
+// Policy returns a copy of the local policy.
+func (v *Vault) Policy() map[string]any {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.policyCopyLocked()
 }
 
 // Status reports content-free counts.
@@ -572,7 +568,7 @@ func (v *Vault) Status() Status {
 		Records: len(v.records),
 		ByType:  map[string]int{},
 		ByState: map[string]int{},
-		Policy:  v.Policy(),
+		Policy:  v.policyCopyLocked(),
 	}
 	for _, record := range v.records {
 		status.Bytes += int64(len(record.Text) + len(record.Summary))

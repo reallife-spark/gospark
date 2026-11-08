@@ -220,3 +220,24 @@ func TestPublicKeySizeGuard(t *testing.T) {
 		t.Fatalf("expected ErrBadSignature for short key, got %v", err)
 	}
 }
+
+func TestVerifyTaskRejectsZeroTTL(t *testing.T) {
+	id := newSigner(t)
+	env := signedTask(t, id, func(e *apiv1.TaskEnvelope) {
+		e.ExpiresAtUnix = 0
+	})
+	err := newVerifier().VerifyTask(id.Public, &env, authz.CapClusterServe)
+	if !errors.Is(err, authz.ErrMalformedEnvelope) {
+		t.Fatalf("expected ErrMalformedEnvelope, got %v", err)
+	}
+}
+
+func TestVerifyTaskRequiresNonceStore(t *testing.T) {
+	id := newSigner(t)
+	env := signedTask(t, id, nil)
+	verifier := &authz.Verifier{}
+	err := verifier.VerifyTask(id.Public, &env, authz.CapClusterServe)
+	if !errors.Is(err, authz.ErrMalformedEnvelope) {
+		t.Fatalf("expected ErrMalformedEnvelope, got %v", err)
+	}
+}
