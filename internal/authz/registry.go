@@ -123,6 +123,22 @@ func SignRegistry(master *identity.Identity, reg *apiv1.NodeRegistry) error {
 		reg.SchemaVersion = apiv1.RegistrySchemaVersion
 	}
 	reg.MasterPublicKeyB64 = master.PublicKeyB64()
+	seenIDs := make(map[string]struct{}, len(reg.Authorizations))
+	seenFPs := make(map[string]struct{}, len(reg.Authorizations))
+	for i := range reg.Authorizations {
+		nodeID := reg.Authorizations[i].Identity.NodeID
+		if _, ok := seenIDs[nodeID]; ok {
+			return fmt.Errorf("%w: duplicate node_id %q", ErrRegistryMalformed, nodeID)
+		}
+		seenIDs[nodeID] = struct{}{}
+		fp := reg.Authorizations[i].Fingerprint
+		if fp != "" {
+			if _, ok := seenFPs[fp]; ok {
+				return fmt.Errorf("%w: duplicate fingerprint for node %q", ErrRegistryMalformed, nodeID)
+			}
+			seenFPs[fp] = struct{}{}
+		}
+	}
 	now := time.Now()
 	for i := range reg.Authorizations {
 		e := &reg.Authorizations[i]
@@ -150,6 +166,12 @@ func SignRegistry(master *identity.Identity, reg *apiv1.NodeRegistry) error {
 		}
 	}
 	normaliseRegistry(reg)
+	// A signer that emits a document its own verifier rejects is worse than a
+	// refusal: every peer would drop the whole registry. Check the exact bytes
+	// before returning them to the caller.
+	if err := VerifyRegistry(master.Public, reg); err != nil {
+		return fmt.Errorf("authz: signed registry is invalid: %w", err)
+	}
 	return nil
 }
 
@@ -182,8 +204,21 @@ func VerifyRegistry(masterPub ed25519.PublicKey, reg *apiv1.NodeRegistry) error 
 	if reg.SchemaVersion != apiv1.RegistrySchemaVersion {
 		return fmt.Errorf("%w: %q", ErrRegistrySchema, reg.SchemaVersion)
 	}
+	seenIDs := make(map[string]struct{}, len(reg.Authorizations))
+	seenFPs := make(map[string]struct{}, len(reg.Authorizations))
 	for i := range reg.Authorizations {
-		if err := VerifyAuthorization(masterPub, &reg.Authorizations[i]); err != nil {
+		entry := &reg.Authorizations[i]
+		if _, ok := seenIDs[entry.Identity.NodeID]; ok {
+			return fmt.Errorf("%w: duplicate node_id %q", ErrRegistryMalformed, entry.Identity.NodeID)
+		}
+		seenIDs[entry.Identity.NodeID] = struct{}{}
+		if entry.Fingerprint != "" {
+			if _, ok := seenFPs[entry.Fingerprint]; ok {
+				return fmt.Errorf("%w: duplicate fingerprint for node %q", ErrRegistryMalformed, entry.Identity.NodeID)
+			}
+			seenFPs[entry.Fingerprint] = struct{}{}
+		}
+		if err := VerifyAuthorization(masterPub, entry); err != nil {
 			return err
 		}
 	}
@@ -231,6 +266,9 @@ func VerifyAuthorization(masterPub ed25519.PublicKey, entry *apiv1.NodeAuthoriza
 	}
 	return nil
 }
+
+// ParseIssuedAt exposes the registry timestamp shape to the adoption guard.
+func ParseIssuedAt(value string) (time.Time, bool) { return parseISO(value) }
 
 // RegistryDigest is the sha256 hex of the registry's canonical JSON, the value
 // peers echo in RegisterNode.registry_digest to prove they adopted the same

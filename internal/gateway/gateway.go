@@ -126,6 +126,16 @@ func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// A readiness probe reaches the engine, so it takes an admission slot just
+	// like inference. Saturation reports 503, which is the truth. /healthz
+	// remains the unbounded cheap liveness endpoint.
+	release, err := g.Limiter.Acquire(r.Context())
+	if err != nil {
+		w.Header().Set("Retry-After", "1")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ready": false, "reason": err.Error()})
+		return
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(r.Context(), g.probeTimeout())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.Upstream+g.readyPath(), nil)
@@ -158,6 +168,15 @@ func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
 // model so a client can still discover what this node fronts.
 func (g *Gateway) handleModels(w http.ResponseWriter, r *http.Request) {
 	if g.Upstream != "" {
+		// Model discovery is an upstream request too. Without admission control
+		// it is a load amplifier that bypasses max_inflight.
+		release, err := g.Limiter.Acquire(r.Context())
+		if err != nil {
+			w.Header().Set("Retry-After", "1")
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+			return
+		}
+		defer release()
 		g.proxy(w, r)
 		return
 	}

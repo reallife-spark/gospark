@@ -301,3 +301,37 @@ func TestVerifyAuthorizationRejectsMalformedTimestamps(t *testing.T) {
 		t.Fatalf("expected ErrRegistryMalformed for bad issued_at, got %v", err)
 	}
 }
+
+func TestRegistryRejectsDuplicateNodeAndFingerprint(t *testing.T) {
+	master, err := identity.Generate("control", identity.RoleMaster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := identity.Generate("node-a", identity.RolePeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	first, err := authz.NewAuthorization(master, node.Projection(), []string{string(authz.CapClusterServe)}, now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.SignatureB64 = ""
+	if err := authz.SignRegistry(master, &apiv1.NodeRegistry{Authorizations: []apiv1.NodeAuthorization{first, second}}); err == nil {
+		t.Fatal("SignRegistry accepted duplicate node entries")
+	}
+
+	other, err := identity.Generate("node-b", identity.RolePeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := authz.NewAuthorization(master, other.Projection(), []string{string(authz.CapClusterServe)}, now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	third.Fingerprint = first.Fingerprint
+	if err := authz.VerifyRegistry(master.Public, &apiv1.NodeRegistry{SchemaVersion: apiv1.RegistrySchemaVersion, Authorizations: []apiv1.NodeAuthorization{first, third}}); err == nil {
+		t.Fatal("VerifyRegistry accepted duplicate fingerprints")
+	}
+}

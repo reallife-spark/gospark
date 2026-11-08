@@ -89,6 +89,35 @@ func (a *App) adoptRegistry(doc *apiv1.NodeRegistry) error {
 			return fmt.Errorf("%w: incoming=%s adopted=%s", authz.ErrRegistryRollback,
 				incoming.LatestIssued().Format(time.RFC3339), adopted.Format(time.RFC3339))
 		}
+		if len(doc.Authorizations) == 0 && len(a.registryDoc.Authorizations) > 0 {
+			a.regMu.Unlock()
+			return fmt.Errorf("%w: an empty registry cannot replace a non-empty one", authz.ErrRegistryRollback)
+		}
+	}
+	// Per-node freshness closes the substitution attack that a document-wide
+	// maximum cannot see: a stale signed entry for one node inside an otherwise
+	// fresh document. Keep removed nodes in the map, so a deleted node cannot be
+	// replayed from an old publication.
+	for i := range doc.Authorizations {
+		entry := &doc.Authorizations[i]
+		issued, ok := authz.ParseIssuedAt(entry.IssuedAt)
+		if !ok {
+			a.regMu.Unlock()
+			return fmt.Errorf("%w: node=%s has malformed issued_at", authz.ErrRegistryMalformed, entry.Identity.NodeID)
+		}
+		if seen, ok := a.registrySeen[entry.Identity.NodeID]; ok && issued.Before(seen) {
+			a.regMu.Unlock()
+			return fmt.Errorf("%w: node=%s incoming=%s seen=%s", authz.ErrRegistryRollback,
+				entry.Identity.NodeID, issued.Format(time.RFC3339), seen.Format(time.RFC3339))
+		}
+	}
+	for i := range doc.Authorizations {
+		entry := &doc.Authorizations[i]
+		if issued, ok := authz.ParseIssuedAt(entry.IssuedAt); ok {
+			if seen, exists := a.registrySeen[entry.Identity.NodeID]; !exists || issued.After(seen) {
+				a.registrySeen[entry.Identity.NodeID] = issued
+			}
+		}
 	}
 	a.registryDoc = doc
 	a.nodeRegistry = incoming

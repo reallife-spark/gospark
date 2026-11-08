@@ -193,8 +193,13 @@ func TestVocabularyMatchesFabric(t *testing.T) {
 			t.Errorf("capability[%d] = %q, want %q", i, c, want[i])
 		}
 	}
-	if !authz.IsSensitive(authz.CapClusterServe) || !authz.IsSensitive(authz.CapGuardApply) || !authz.IsSensitive(authz.CapMemorySupervise) {
-		t.Error("cluster-serve, guard-apply and memory-supervise must be sensitive")
+	for _, cap := range []authz.Capability{
+		authz.CapClusterServe, authz.CapGuardApply, authz.CapAdminSupervise,
+		authz.CapCrossDepartmentShare, authz.CapModelUplift, authz.CapMemorySupervise,
+	} {
+		if !authz.IsSensitive(cap) {
+			t.Errorf("%s must be sensitive", cap)
+		}
 	}
 	if authz.IsSensitive(authz.CapTelemetry) {
 		t.Error("telemetry must not be sensitive")

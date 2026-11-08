@@ -44,6 +44,15 @@ type Server struct {
 	// ClientFingerprint, if set, requires mutual TLS: the connecting peer must
 	// present a client certificate whose hex SHA-256 matches this value.
 	ClientFingerprint string
+	// AllowUnauthenticated permits an unpinned non-loopback listener. It is for
+	// an explicit single-process rehearsal; a deployment must pin.
+	AllowUnauthenticated bool
+	// MaxInflightBytes bounds the memory reserved by concurrent streams. A
+	// stream reserves maxBlockBytes before reading; zero uses 256 MiB.
+	MaxInflightBytes int64
+
+	inflightBytes int64
+	inflightMu    sync.Mutex
 
 	// tlsOnce caches the listener certificate so its fingerprint is available to
 	// a peer before the stream arrives.
@@ -79,11 +88,17 @@ func BlockHeaderFor(blockID, originNodeID string, b *kvtransfer.Block, now time.
 
 // ListenAndServe blocks serving QUIC streams until ctx is cancelled.
 func (s *Server) ListenAndServe(ctx context.Context) error {
+	if s.MaxInflightBytes <= 0 {
+		s.MaxInflightBytes = 256 << 20
+	}
 	s.tlsOnce.Do(func() {
 		s.tlsConf, s.tlsFingerprint, s.tlsErr = selfSignedTLS()
 	})
 	if s.tlsErr != nil {
 		return s.tlsErr
+	}
+	if s.ClientFingerprint == "" && !s.AllowUnauthenticated && !loopbackHost(s.Addr) {
+		return fmt.Errorf("transport: non-loopback listener %q has no client certificate pin", s.Addr)
 	}
 	if s.ClientFingerprint != "" {
 		s.tlsConf.ClientAuth = tls.RequireAnyClientCert
@@ -142,7 +157,31 @@ func (s *Server) serveConn(ctx context.Context, conn *quic.Conn) {
 	}
 }
 
+func (s *Server) reserveStream() bool {
+	s.inflightMu.Lock()
+	defer s.inflightMu.Unlock()
+	if s.inflightBytes+maxBlockBytes > s.MaxInflightBytes {
+		return false
+	}
+	s.inflightBytes += maxBlockBytes
+	return true
+}
+
+func (s *Server) releaseStream() {
+	s.inflightMu.Lock()
+	s.inflightBytes -= maxBlockBytes
+	if s.inflightBytes < 0 {
+		s.inflightBytes = 0
+	}
+	s.inflightMu.Unlock()
+}
+
 func (s *Server) handleStream(ctx context.Context, stream *quic.Stream) error {
+	if !s.reserveStream() {
+		return errors.New("transport: in-flight block budget exhausted")
+	}
+	defer s.releaseStream()
+	_ = stream.SetReadDeadline(time.Now().Add(30 * time.Second))
 	headerBytes, err := readFrame(stream)
 	if err != nil {
 		return fmt.Errorf("read header: %w", err)
@@ -161,6 +200,15 @@ func (s *Server) handleStream(ctx context.Context, stream *quic.Stream) error {
 	}
 	if got := block.Digest(); got != header.Digest {
 		return fmt.Errorf("digest mismatch: header=%s computed=%s", header.Digest, got)
+	}
+	if header.BlockID == "" || len(header.BlockID) > 256 {
+		return errors.New("invalid block id")
+	}
+	if header.NumElements != uint32(block.NumElements) ||
+		header.NumBlocks != uint32((block.NumElements+kvtransfer.BlockSize-1)/kvtransfer.BlockSize) ||
+		header.GlobalScale != block.GlobalScale ||
+		header.DType != kvtransfer.DType {
+		return errors.New("block header does not match decoded block")
 	}
 	ack := header.Digest
 	if s.Handler != nil {
@@ -193,6 +241,10 @@ func (s *Server) readChunks(r io.Reader) ([]byte, error) {
 
 // DialOptions controls how SendBlock authenticates the peer.
 type DialOptions struct {
+	// AllowUnauthenticated permits an empty pin. It exists only for the
+	// in-process SendBlock scaffold; callers outside that test must pin.
+	AllowUnauthenticated bool
+
 	// PinnedFingerprint, if non-empty, is the hex SHA-256 of the peer's leaf
 	// certificate (see Server.Fingerprint and CertFingerprint). When set, the
 	// dial fails unless the presented certificate matches exactly.
@@ -201,6 +253,18 @@ type DialOptions struct {
 	// ClientCertificate, if non-nil, is presented for mutual TLS. The server
 	// pins its fingerprint via Server.ClientFingerprint.
 	ClientCertificate *tls.Certificate
+}
+
+func loopbackHost(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // clientTLS builds the dialer's TLS config. With a pin, verification is done by
@@ -218,8 +282,15 @@ func clientTLS(opts DialOptions) (*tls.Config, error) {
 	if opts.ClientCertificate != nil {
 		conf.Certificates = []tls.Certificate{*opts.ClientCertificate}
 	}
-	pin := strings.TrimSpace(opts.PinnedFingerprint)
+	rawPin := opts.PinnedFingerprint
+	pin := strings.TrimSpace(rawPin)
+	if rawPin != "" && pin == "" {
+		return nil, errors.New("transport: certificate pin is empty")
+	}
 	if pin == "" {
+		if !opts.AllowUnauthenticated {
+			return nil, errors.New("transport: a certificate pin is required")
+		}
 		return conf, nil
 	}
 	conf.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -241,13 +312,16 @@ func clientTLS(opts DialOptions) (*tls.Config, error) {
 //
 // Deprecated: use SendBlockWithOptions with DialOptions.PinnedFingerprint.
 func SendBlock(ctx context.Context, addr string, blockID, originNodeID string, b *kvtransfer.Block, chunkSize int) (string, error) {
-	return SendBlockWithOptions(ctx, addr, blockID, originNodeID, b, chunkSize, DialOptions{})
+	return SendBlockWithOptions(ctx, addr, blockID, originNodeID, b, chunkSize, DialOptions{AllowUnauthenticated: true})
 }
 
 // SendBlockWithOptions streams a block to addr and returns the server's ack.
 func SendBlockWithOptions(ctx context.Context, addr string, blockID, originNodeID string, b *kvtransfer.Block, chunkSize int, opts DialOptions) (string, error) {
 	if chunkSize <= 0 {
 		chunkSize = 256 * 1024
+	}
+	if blockID == "" || len(blockID) > 256 {
+		return "", errors.New("transport: block id is empty or too long")
 	}
 	tlsConf, err := clientTLS(opts)
 	if err != nil {

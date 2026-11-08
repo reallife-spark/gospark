@@ -56,6 +56,13 @@ type TransportConfig struct {
 	Listen    string        `yaml:"listen"`     // host:port for the HTTP/3 data plane
 	ChunkSize int           `yaml:"chunk_size"` // bytes per streamed chunk
 	Timeout   time.Duration `yaml:"timeout"`
+	// ClientFingerprint is the pinned client-certificate fingerprint for mutual
+	// TLS. Required for a non-loopback listener; loopback-only test servers may
+	// omit it.
+	ClientFingerprint string `yaml:"client_fingerprint"`
+	// AllowUnauthenticated explicitly permits an unpinned non-loopback listener.
+	// It exists for a single-process rehearsal, never for a deployment.
+	AllowUnauthenticated bool `yaml:"allow_unauthenticated"`
 }
 
 type GatewayConfig struct {
@@ -339,6 +346,12 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("GOSPARK_BACKUP_SKIP_DIRS"); v != "" {
 		cfg.Backup.SkipDirs = splitList(v)
+	}
+	if v := os.Getenv("GOSPARK_TRANSPORT_CLIENT_FINGERPRINT"); v != "" {
+		cfg.Transport.ClientFingerprint = v
+	}
+	if v := os.Getenv("GOSPARK_TRANSPORT_ALLOW_UNAUTHENTICATED"); v == "1" {
+		cfg.Transport.AllowUnauthenticated = true
 	}
 	if v := os.Getenv("GOSPARK_TRANSPORT_LISTEN"); v != "" {
 		cfg.Transport.Listen = v

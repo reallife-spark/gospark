@@ -14,11 +14,13 @@ package sparknet.v1;
 
 option go_package = "github.com/reallife-spark/goSpark/internal/apiv1";
 
-// BlockHeader is sent at the head of every streamed KV block.
+// BlockHeader is the JSON object sent as the first length-prefixed frame of a
+// stream. It is not encoded as a protobuf message on the wire; this file is the
+// field contract, not the framing.
 message BlockHeader {
   string block_id = 1;
   string origin_node_id = 2;
-  string digest = 3;                // sha256 hex over the packed payload
+  string digest = 3;                // sha256 hex over Block.Canonical(): count, scales, packed length and packed bytes
   uint32 num_elements = 4;
   uint32 num_blocks = 5;            // ceil(num_elements / 16)
   float global_scale = 6;           // FP32 tensor-level scale
@@ -26,8 +28,9 @@ message BlockHeader {
   int64 created_at_unix = 8;
 }
 
-// BlockChunk is one slice of the packed payload so a large block streams in
-// bounded chunks instead of a single multi-gigabyte message.
+// BlockChunk describes one slice of the packed payload. The current transport
+// uses raw 4-byte big-endian length-prefixed frames (an empty frame ends the
+// payload), not a protobuf BlockChunk message.
 message BlockChunk {
   string block_id = 1;
   uint32 seq = 2;
@@ -35,8 +38,9 @@ message BlockChunk {
   bytes data = 4;
 }
 
-// SemanticDelta is used for delta sync: the sender advertises the mirrored
-// hashes it holds so only the blocks the peer lacks are transferred.
+// SemanticDelta is the delta-sync control shape: a peer advertises the digests
+// it holds. It does not travel in the current QUIC data plane; the local
+// DeltaCache uses it in-process.
 message SemanticDelta {
   string namespace = 1;
   repeated string have_digests = 2;

@@ -36,6 +36,10 @@ transport:
   listen: 0.0.0.0:7443
   chunk_size: 262144
   timeout: 10s
+  # Mutual-TLS pin. Required for a non-loopback listener; the peer certificate
+  # fingerprint is the same value `sparknetctl` prints.
+  client_fingerprint: ""
+  allow_unauthenticated: false
 
 gateway:
   # The Go API gateway in front of the local compute plane.
@@ -87,7 +91,7 @@ admin:
   # Required whenever listen is set. Loopback is not an authorization boundary:
   # any local process could otherwise re-sign the registry through this surface.
   # Supply it via GOSPARK_ADMIN_TOKEN rather than committing a literal.
-  token: ""
+  token: ""  # set via GOSPARK_ADMIN_TOKEN; startup fails closed without it
 
 metrics:
   # Prometheus surface. /admin/metrics is always served on the admin listener

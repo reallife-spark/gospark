@@ -23,7 +23,10 @@ func DecodeCanonical(buf []byte) (*Block, error) {
 		return nil, ErrEmpty
 	}
 	nblocks := (numElements + BlockSize - 1) / BlockSize
-	if nblocks > (len(buf)-12)/4 {
+	if packedLen != (numElements+1)/2 {
+		return nil, fmt.Errorf("%w: packed=%d expected=%d", ErrBadLength, packedLen, (numElements+1)/2)
+	}
+	if p+nblocks*4 > len(buf) {
 		return nil, fmt.Errorf("kvtransfer: block scale table exceeds payload")
 	}
 	scales := make([]float32, nblocks)
@@ -34,8 +37,8 @@ func DecodeCanonical(buf []byte) (*Block, error) {
 		scales[i] = math.Float32frombits(binary.LittleEndian.Uint32(buf[p:]))
 		p += 4
 	}
-	if p+packedLen > len(buf) {
-		return nil, fmt.Errorf("kvtransfer: truncated packed payload")
+	if p+packedLen != len(buf) {
+		return nil, fmt.Errorf("kvtransfer: packed payload length mismatch or trailing bytes")
 	}
 	packed := make([]byte, packedLen)
 	copy(packed, buf[p:p+packedLen])

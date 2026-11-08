@@ -113,6 +113,7 @@ type App struct {
 	// control plane, adopted and enforced by the agent.
 	nodeRegistry *authz.Registry
 	registryDoc  *apiv1.NodeRegistry
+	registrySeen map[string]time.Time
 	regMu        sync.RWMutex
 
 	transportAddr string
@@ -152,6 +153,7 @@ func New(opts Options) (*App, error) {
 		masterPub:     opts.MasterPublic,
 		executorPubs:  opts.ExecutorPublic,
 		registryDoc:   opts.Registry,
+		registrySeen:  map[string]time.Time{},
 		transportAddr: opts.Config.Transport.Listen,
 		adminAddr:     opts.Config.Admin.Listen,
 		injectedBus:   opts.Bus,
@@ -222,9 +224,11 @@ func (a *App) Run(ctx context.Context) error {
 	// The data plane (KV block intake) runs for both roles.
 	ready := make(chan net.Addr, 1)
 	a.transport = &transport.Server{
-		Addr:      a.transportAddr,
-		ChunkSize: a.cfg.Transport.ChunkSize,
-		Ready:     ready,
+		Addr:                 a.transportAddr,
+		ChunkSize:            a.cfg.Transport.ChunkSize,
+		ClientFingerprint:    a.cfg.Transport.ClientFingerprint,
+		AllowUnauthenticated: a.cfg.Transport.AllowUnauthenticated,
+		Ready:                ready,
 		Handler: func(_ context.Context, h apiv1.BlockHeader, b *kvtransfer.Block) (string, error) {
 			digest := a.cache.Put(h.BlockID, b)
 			a.counters.BlocksReceived.Add(1)

@@ -184,3 +184,39 @@ func signedTask(t *testing.T, id *identity.Identity, taskID string) apiv1.TaskEn
 	env.SignatureB64 = identity.EncodeSignature(sig)
 	return env
 }
+
+func TestAgentRegistryAdoptionRejectsPerNodeRollbackAndEmptyWipe(t *testing.T) {
+	control, err := identity.Generate("control", identity.RoleMaster)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := identity.Generate("node-a", identity.RolePeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	newer, err := authz.NewAuthorization(control, node.Projection(), []string{string(authz.CapClusterServe)}, base, base.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	older, err := authz.NewAuthorization(control, node.Projection(), []string{string(authz.CapClusterServe)}, base.Add(-time.Hour), base.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := New(Options{Config: config.Default(), Identity: node, Role: RoleAgent, MasterPublic: control.Public, Bus: bus.NewMemory()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := &apiv1.NodeRegistry{SchemaVersion: apiv1.RegistrySchemaVersion, MasterPublicKeyB64: control.PublicKeyB64(), Authorizations: []apiv1.NodeAuthorization{newer}}
+	if err := agent.adoptRegistry(fresh); err != nil {
+		t.Fatalf("fresh registry: %v", err)
+	}
+	old := &apiv1.NodeRegistry{SchemaVersion: apiv1.RegistrySchemaVersion, MasterPublicKeyB64: control.PublicKeyB64(), Authorizations: []apiv1.NodeAuthorization{older}}
+	if err := agent.adoptRegistry(old); !errors.Is(err, authz.ErrRegistryRollback) {
+		t.Fatalf("older per-node entry err = %v, want ErrRegistryRollback", err)
+	}
+	empty := &apiv1.NodeRegistry{SchemaVersion: apiv1.RegistrySchemaVersion, MasterPublicKeyB64: control.PublicKeyB64(), Authorizations: []apiv1.NodeAuthorization{}}
+	if err := agent.adoptRegistry(empty); !errors.Is(err, authz.ErrRegistryRollback) {
+		t.Fatalf("empty registry err = %v, want ErrRegistryRollback", err)
+	}
+}

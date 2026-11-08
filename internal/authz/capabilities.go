@@ -60,7 +60,9 @@ var knownSet = func() map[Capability]struct{} {
 var sensitive = map[Capability]bool{
 	CapGuardApply:           true,
 	CapClusterServe:         true,
+	CapAdminSupervise:       true,
 	CapCrossDepartmentShare: true,
+	CapModelUplift:          true,
 	CapMemorySupervise:      true,
 }
 
