@@ -2,6 +2,7 @@
 /bin/
 # Stray root-level build (`go build -o stub-vllm`); make build emits bin/stub-vllm.
 /stub-vllm
+/sparknet-understand
 
 # Local state: keys, registry snapshots, delta caches.
 /.state/
