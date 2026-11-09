@@ -759,7 +759,7 @@ var stopWords = map[string]struct{}{
 
 func tokenize(text string) []string {
 	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-')
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-'
 	})
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(fields))
