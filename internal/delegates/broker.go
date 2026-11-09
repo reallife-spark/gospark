@@ -150,15 +150,28 @@ func (b *Broker) Cancel(planID string) bool {
 	return true
 }
 
-// Close cancels every in-flight plan.
+// Close cancels every in-flight plan and waits for their goroutines to settle.
+// Waiting matters to callers that remove the run store immediately afterwards:
+// a cancelled executor may still be persisting its final state.
 func (b *Broker) Close() {
 	b.mu.Lock()
 	b.stopped = true
+	cancels := make([]context.CancelFunc, 0, len(b.plans))
 	for _, cancel := range b.plans {
-		cancel()
+		cancels = append(cancels, cancel)
+	}
+	done := make([]chan struct{}, 0, len(b.done))
+	for _, ch := range b.done {
+		done = append(done, ch)
 	}
 	b.cancel()
 	b.mu.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+	for _, ch := range done {
+		<-ch
+	}
 }
 
 func (b *Broker) execute(ctx context.Context, planID string, ordered []Task, byTask map[string]*Run, done chan struct{}) {
