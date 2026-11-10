@@ -1,6 +1,9 @@
 package understand
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -39,17 +42,65 @@ func TestNeighborsAndShortestPath(t *testing.T) {
 	}
 }
 
-func TestDiffReportsAddedAndRemoved(t *testing.T) {
-	oldGraph := sampleGraph()
-	newGraph := sampleGraph()
-	newGraph.Nodes = append(newGraph.Nodes, Node{ID: "file:b.py", Type: "file", Name: "b.py", Summary: "new"})
-	newGraph.Edges = append(newGraph.Edges, Edge{Source: "file:b.py", Target: "file:a.py", Type: "imports", Direction: "forward", Weight: 0.5})
-	delta := Diff(oldGraph, newGraph)
-	if len(delta.NodesAdded) != 1 || delta.NodesAdded[0] != "file:b.py" {
-		t.Fatalf("nodes added = %v", delta.NodesAdded)
+func TestLoadAndSavePreserveRawGraphFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.json")
+	raw := `{
+  "version": "1.0",
+  "kind": "codebase",
+  "project": {"name": "fixture"},
+  "nodes": [
+    {
+      "id": "file:a.py",
+      "type": "file",
+      "name": "a.py",
+      "summary": "",
+      "tags": [],
+      "complexity": "moderate",
+      "futureField": {"kept": true}
+    }
+  ],
+  "edges": [],
+  "layers": [],
+  "tour": [
+    {
+      "order": 1,
+      "title": "a.py",
+      "description": "",
+      "nodeIds": ["file:a.py"],
+      "languageLesson": "Keep this optional field."
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if len(delta.EdgesAdded) != 1 {
-		t.Fatalf("edges added = %v", delta.EdgesAdded)
+	graph, err := LoadGraph(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(graph.Tour) != 1 || graph.Tour[0].LanguageLesson != "Keep this optional field." {
+		t.Fatalf("languageLesson was not loaded: %#v", graph.Tour)
+	}
+	encoded, err := json.Marshal(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), "futureField") {
+		t.Fatal("unknown node field was dropped")
+	}
+	if !strings.Contains(string(encoded), "languageLesson") {
+		t.Fatal("languageLesson was dropped")
+	}
+	second := filepath.Join(t.TempDir(), "saved.json")
+	if err := SaveGraph(second, graph); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), "futureField") || !strings.Contains(string(saved), "languageLesson") {
+		t.Fatalf("saved graph lost optional fields: %s", saved)
 	}
 }
 

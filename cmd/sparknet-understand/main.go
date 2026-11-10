@@ -1,7 +1,7 @@
-// Command sparknet-understand is the Go control/service surface for the
-// Understand-Anything graph: scan, parse through the Python seam, query, diff,
-// export and a stdio MCP server. It opens no network port; the node console
-// reads the graph from `.ua/` and the MCP server speaks over stdio.
+// Command sparknet-understand consumes the Understand-Anything graph. Scan,
+// parse and diff go through the shared Python producer; query, export and a
+// stdio MCP server stay native. GoFrag keeps the native Go parser. It opens no
+// network port; the node console reads the graph from `.ua/`.
 package main
 
 import (
@@ -60,11 +60,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `sparknet-understand — code-understanding graph service
 
 Usage:
-  sparknet-understand scan    --root DIR [--out FILE] [--exclude PATTERN]...
+  sparknet-understand scan    --root DIR [--out FILE] [--exclude PATTERN]... [--python PATH] [--shared PATH]
   sparknet-understand parse   --root DIR [--out FILE] [--python PATH] [--shared PATH]
-  sparknet-understand gofrag  --root DIR [--out FILE]
+  sparknet-understand gofrag  --root DIR [--out FILE] [--python PATH] [--shared PATH]
   sparknet-understand query   --graph FILE [--text TEXT] [--limit N]
-  sparknet-understand diff    --old FILE --new FILE [--out FILE]
+  sparknet-understand diff    --old FILE --new FILE [--out FILE] [--python PATH] [--shared PATH]
   sparknet-understand export  --graph FILE [--format json|dot|mermaid] [--out FILE]
   sparknet-understand mcp     --graph FILE
   sparknet-understand version`)
@@ -82,10 +82,12 @@ func runScan(args []string) error {
 	flags := flag.NewFlagSet("scan", flag.ExitOnError)
 	root := flags.String("root", ".", "tree to scan")
 	out := flags.String("out", "", "write JSON here instead of stdout")
+	python := flags.String("python", "python3", "Python interpreter")
+	shared := flags.String("shared", understand.DefaultSharedScript(), "path to shared/sparknet-understand.py")
 	var excludes stringList
 	flags.Var(&excludes, "exclude", "additional ignore pattern (repeatable)")
 	_ = flags.Parse(args)
-	result, err := understand.Scan(*root, excludes)
+	result, err := understand.Scan(context.Background(), *python, *shared, *root, excludes)
 	if err != nil {
 		return err
 	}
@@ -127,19 +129,17 @@ func runDiff(args []string) error {
 	oldPath := flags.String("old", "", "old graph")
 	newPath := flags.String("new", "", "new graph")
 	out := flags.String("out", "", "write JSON here instead of stdout")
+	python := flags.String("python", "python3", "Python interpreter")
+	shared := flags.String("shared", understand.DefaultSharedScript(), "path to shared/sparknet-understand.py")
 	_ = flags.Parse(args)
 	if *oldPath == "" || *newPath == "" {
 		return fmt.Errorf("diff requires --old and --new")
 	}
-	oldGraph, err := understand.LoadGraph(*oldPath)
+	data, err := understand.Diff(context.Background(), *python, *shared, *oldPath, *newPath)
 	if err != nil {
 		return err
 	}
-	newGraph, err := understand.LoadGraph(*newPath)
-	if err != nil {
-		return err
-	}
-	return writeJSON(*out, understand.Diff(oldGraph, newGraph))
+	return writeText(*out, string(data))
 }
 
 func runExport(args []string) error {
@@ -168,8 +168,10 @@ func runGoFrag(args []string) error {
 	flags := flag.NewFlagSet("gofrag", flag.ExitOnError)
 	root := flags.String("root", ".", "tree to scan")
 	out := flags.String("out", "", "write JSON here instead of stdout")
+	python := flags.String("python", "python3", "Python interpreter")
+	shared := flags.String("shared", understand.DefaultSharedScript(), "path to shared/sparknet-understand.py")
 	_ = flags.Parse(args)
-	result, err := understand.Scan(*root, nil)
+	result, err := understand.Scan(context.Background(), *python, *shared, *root, nil)
 	if err != nil {
 		return err
 	}

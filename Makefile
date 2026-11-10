@@ -51,6 +51,7 @@ build:
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-backup ./cmd/sparknet-backup
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-mcp ./cmd/sparknet-mcp
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-memory ./cmd/sparknet-memory
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/sparknet-understand ./cmd/sparknet-understand
 	# CPU-only OpenAI-compatible vLLM stub: lets a machine with no GPU bring the
 	# whole node graph up with a real round-trip through the agent gateway.
 	CGO_ENABLED=0 $(GO) build -o $(BIN)/stub-vllm ./cmd/stub-vllm

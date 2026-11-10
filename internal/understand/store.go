@@ -9,7 +9,8 @@ import (
 	"strings"
 )
 
-// LoadGraph reads a graph from disk.
+// LoadGraph reads a graph from disk and retains the original JSON for lossless
+// export. The typed fields are a query view, not the schema boundary.
 func LoadGraph(path string) (Graph, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -23,7 +24,8 @@ func LoadGraph(path string) (Graph, error) {
 }
 
 // SaveGraph writes a graph atomically enough for the console's read path:
-// the parent is created and the file is replaced in one write.
+// the parent is created and the file is replaced in one write. A graph loaded
+// through LoadGraph keeps its raw bytes, including fields the typed view omits.
 func SaveGraph(path string, graph Graph) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -155,66 +157,6 @@ func ShortestPath(graph Graph, source, target string) []string {
 	}
 	return nil
 }
-
-// Diff reports node and edge changes between two graphs.
-func Diff(oldGraph, newGraph Graph) DiffResult {
-	oldNodes := map[string]Node{}
-	for _, node := range oldGraph.Nodes {
-		oldNodes[node.ID] = node
-	}
-	newNodes := map[string]Node{}
-	for _, node := range newGraph.Nodes {
-		newNodes[node.ID] = node
-	}
-	result := DiffResult{NodesAdded: []string{}, NodesRemoved: []string{}, NodesChanged: []string{}, EdgesAdded: [][]string{}, EdgesRemoved: [][]string{}}
-	for id, node := range newNodes {
-		oldNode, ok := oldNodes[id]
-		if !ok {
-			result.NodesAdded = append(result.NodesAdded, id)
-			continue
-		}
-		oldJSON, _ := json.Marshal(oldNode)
-		newJSON, _ := json.Marshal(node)
-		if string(oldJSON) != string(newJSON) {
-			result.NodesChanged = append(result.NodesChanged, id)
-		}
-	}
-	for id := range oldNodes {
-		if _, ok := newNodes[id]; !ok {
-			result.NodesRemoved = append(result.NodesRemoved, id)
-		}
-	}
-	oldEdges := map[string]Edge{}
-	for _, edge := range oldGraph.Edges {
-		oldEdges[edgeKey(edge)] = edge
-	}
-	newEdges := map[string]Edge{}
-	for _, edge := range newGraph.Edges {
-		newEdges[edgeKey(edge)] = edge
-	}
-	for key := range newEdges {
-		if _, ok := oldEdges[key]; !ok {
-			result.EdgesAdded = append(result.EdgesAdded, strings.Split(key, "\x00"))
-		}
-	}
-	for key := range oldEdges {
-		if _, ok := newEdges[key]; !ok {
-			result.EdgesRemoved = append(result.EdgesRemoved, strings.Split(key, "\x00"))
-		}
-	}
-	sort.Strings(result.NodesAdded)
-	sort.Strings(result.NodesRemoved)
-	sort.Strings(result.NodesChanged)
-	sort.Slice(result.EdgesAdded, func(i, j int) bool {
-		return strings.Join(result.EdgesAdded[i], "") < strings.Join(result.EdgesAdded[j], "")
-	})
-	sort.Slice(result.EdgesRemoved, func(i, j int) bool {
-		return strings.Join(result.EdgesRemoved[i], "") < strings.Join(result.EdgesRemoved[j], "")
-	})
-	return result
-}
-
-func edgeKey(edge Edge) string { return edge.Source + "\x00" + edge.Target + "\x00" + edge.Type }
 
 // ExportDOT renders a Graphviz document. The graph is data, so labels are
 // escaped rather than interpreted.

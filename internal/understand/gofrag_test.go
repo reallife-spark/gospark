@@ -1,6 +1,7 @@
 package understand
 
 import (
+	"context"
 	"testing"
 )
 
@@ -21,7 +22,7 @@ func (s *Server) Handle() {
 
 func helper() {}
 `)
-	result, err := Scan(root, nil)
+	result, err := Scan(context.Background(), "python3", sharedScript(t), root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

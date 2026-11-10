@@ -1,8 +1,10 @@
-// Package understand is the Go control/service half of the Understand-Anything
-// graph: walking, fingerprinting, storage, query, diff, export and the MCP
-// surface. It never parses a non-Go file and never writes authority; the
-// Python core in the fabric's shared/ directory is the one parser.
+// Package understand is the Go consumer half of the Understand-Anything graph:
+// storage, query, export and the MCP surface over an existing graph. Scan and
+// diff are adapters over the Python producer; gofrag keeps the native Go
+// parser. It never writes authority and never opens a network port.
 package understand
+
+import "encoding/json"
 
 // Node is one graph node. The field set mirrors
 // contracts/understand-schema.json; optional fields are omitted when empty.
@@ -41,10 +43,11 @@ type Layer struct {
 
 // TourStep is one ordered stop in the generated tour.
 type TourStep struct {
-	Order       int      `json:"order"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	NodeIDs     []string `json:"nodeIds"`
+	Order          int      `json:"order"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	NodeIDs        []string `json:"nodeIds"`
+	LanguageLesson string   `json:"languageLesson,omitempty"`
 }
 
 // Project is the graph's project metadata.
@@ -57,7 +60,8 @@ type Project struct {
 	GitCommitHash string   `json:"gitCommitHash"`
 }
 
-// Graph is the serialized knowledge graph.
+// Graph is the serialized knowledge graph. Raw retains the original JSON so
+// export and save do not silently drop fields this typed view does not name.
 type Graph struct {
 	Version string     `json:"version"`
 	Kind    string     `json:"kind,omitempty"`
@@ -66,6 +70,29 @@ type Graph struct {
 	Edges   []Edge     `json:"edges"`
 	Layers  []Layer    `json:"layers"`
 	Tour    []TourStep `json:"tour"`
+	raw     json.RawMessage
+}
+
+// UnmarshalJSON loads the typed view and keeps the original bytes for export.
+func (g *Graph) UnmarshalJSON(data []byte) error {
+	type graphAlias Graph
+	var value graphAlias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = Graph(value)
+	g.raw = append(json.RawMessage(nil), data...)
+	return nil
+}
+
+// MarshalJSON returns the original graph bytes when the graph was loaded. A
+// graph constructed in Go is marshalled from its typed fields.
+func (g Graph) MarshalJSON() ([]byte, error) {
+	if len(g.raw) > 0 {
+		return g.raw, nil
+	}
+	type graphAlias Graph
+	return json.Marshal(graphAlias(g))
 }
 
 // Fragment is one file's contribution to a graph.
@@ -95,13 +122,4 @@ type ScanResult struct {
 	Files     []FileRecord `json:"files"`
 	Languages []string     `json:"languages"`
 	Errors    []ScanError  `json:"errors"`
-}
-
-// DiffResult is the node/edge delta between two graphs.
-type DiffResult struct {
-	NodesAdded   []string   `json:"nodes_added"`
-	NodesRemoved []string   `json:"nodes_removed"`
-	NodesChanged []string   `json:"nodes_changed"`
-	EdgesAdded   [][]string `json:"edges_added"`
-	EdgesRemoved [][]string `json:"edges_removed"`
 }

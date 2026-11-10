@@ -1,6 +1,7 @@
 package understand
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,13 +18,25 @@ func writeFile(t *testing.T, root, rel, content string) {
 	}
 }
 
-func TestScanFingerprintsAndExcludes(t *testing.T) {
+func sharedScript(t *testing.T) string {
+	t.Helper()
+	path, err := filepath.Abs(filepath.Join("..", "..", "..", "shared", "sparknet-understand.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Skipf("shared understand script not present: %v", err)
+	}
+	return path
+}
+
+func TestScanUsesPythonPolicy(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "src/app.py", "print('hello')\n")
 	writeFile(t, root, "node_modules/ignored.js", "function ignored() {}\n")
 	writeFile(t, root, "ignored.py", "print('ignored')\n")
 	writeFile(t, root, ".understandignore", "ignored.py\n")
-	result, err := Scan(root, nil)
+	result, err := Scan(context.Background(), "python3", sharedScript(t), root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,28 +58,15 @@ func TestScanFingerprintsAndExcludes(t *testing.T) {
 	}
 }
 
-func TestLanguageForAndTestPath(t *testing.T) {
-	cases := map[string]string{
-		"a/b.py":       "python",
-		"a/b.go":       "go",
-		"Dockerfile":   "dockerfile",
-		"Makefile":     "makefile",
-		".env":         "env",
-		"a/b.unknown":  "",
-		"compose.yaml": "docker-compose",
-		"a/b.test.ts":  "typescript",
-	}
-	for path, want := range cases {
-		if got := LanguageFor(path); got != want {
-			t.Fatalf("LanguageFor(%q) = %q, want %q", path, got, want)
-		}
-	}
-	for _, path := range []string{"tests/test_app.py", "src/app_test.go", "src/App.test.tsx"} {
-		if !IsTestPath(path) {
-			t.Fatalf("IsTestPath(%q) = false", path)
-		}
-	}
-	if IsTestPath("src/app.py") {
-		t.Fatal("src/app.py reported as a test")
+func TestScanFailsClosedWithoutProducer(t *testing.T) {
+	_, err := Scan(
+		context.Background(),
+		"python3",
+		filepath.Join(t.TempDir(), "missing-understand.py"),
+		t.TempDir(),
+		nil,
+	)
+	if err == nil {
+		t.Fatal("Scan succeeded without the Python producer")
 	}
 }

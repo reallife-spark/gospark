@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -12,20 +11,17 @@ import (
 // not reimplement the graph merger: the Python core is the one parser and the
 // one merger, and this is the seam the ADR names.
 func Parse(ctx context.Context, python, script, root, out string) error {
-	if python == "" {
-		python = "python3"
-	}
 	if script == "" {
 		return fmt.Errorf("understand: no shared script path; set --shared or SPARKNET_SHARED_SCRIPT")
 	}
-	if _, err := os.Stat(script); err != nil {
-		return fmt.Errorf("understand: shared script %s: %w", script, err)
+	_, stderr, err := runPython(ctx, python, script, "build", "--root", root, "--out", out)
+	if err != nil {
+		return err
 	}
-	command := exec.CommandContext(ctx, python, script, "build", "--root", root, "--out", out)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("understand: python build: %w", err)
+	if len(stderr) > 0 {
+		if _, writeErr := os.Stderr.Write(stderr); writeErr != nil {
+			return fmt.Errorf("understand: write python diagnostics: %w", writeErr)
+		}
 	}
 	return nil
 }
