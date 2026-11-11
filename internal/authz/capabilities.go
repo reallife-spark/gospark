@@ -14,16 +14,18 @@ import "sort"
 type Capability string
 
 const (
-	CapTelemetry       Capability = "telemetry"
-	CapP2PSync         Capability = "p2p-sync"
-	CapPushReceive     Capability = "push-receive"
-	CapGuardApply      Capability = "guard-apply"
-	CapClusterVote     Capability = "cluster-vote"
-	CapClusterDispatch Capability = "cluster-dispatch"
-	CapClusterServe    Capability = "cluster-serve"
-	CapAdminSupervise  Capability = "admin-supervise"
-	CapModelUplift     Capability = "model-uplift"
-	CapMemorySupervise Capability = "memory-supervise"
+	CapTelemetry        Capability = "telemetry"
+	CapP2PSync          Capability = "p2p-sync"
+	CapPushReceive      Capability = "push-receive"
+	CapGuardApply       Capability = "guard-apply"
+	CapClusterVote      Capability = "cluster-vote"
+	CapClusterDispatch  Capability = "cluster-dispatch"
+	CapClusterServe     Capability = "cluster-serve"
+	CapAdminSupervise   Capability = "admin-supervise"
+	CapSandboxSupervise Capability = "sandbox-supervise"
+	CapModelUplift      Capability = "model-uplift"
+	CapMemorySupervise  Capability = "memory-supervise"
+	CapIssueReport      Capability = "issue-report"
 
 	// CapCrossDepartmentShare lets a node share with one whose Master-attested
 	// department differs from its own. Inside a department no extra grant is
@@ -42,9 +44,11 @@ var KnownCapabilities = []Capability{
 	CapClusterDispatch,
 	CapClusterServe,
 	CapAdminSupervise,
+	CapSandboxSupervise,
 	CapCrossDepartmentShare,
 	CapModelUplift,
 	CapMemorySupervise,
+	CapIssueReport,
 }
 
 var knownSet = func() map[Capability]struct{} {
@@ -61,6 +65,7 @@ var sensitive = map[Capability]bool{
 	CapGuardApply:           true,
 	CapClusterServe:         true,
 	CapAdminSupervise:       true,
+	CapSandboxSupervise:     true,
 	CapCrossDepartmentShare: true,
 	CapModelUplift:          true,
 	CapMemorySupervise:      true,
