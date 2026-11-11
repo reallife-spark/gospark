@@ -8,9 +8,9 @@ checkout of the fabric repo alongside it.
 | Field | Value |
 |---|---|
 | Source repository | `/mnt/knowledge/sparknet` (`contracts/`) |
-| Source | `a4fffb3` plus the working-tree memory contract (2026-11-02); the snapshot is refreshed again when that change lands |
-| Snapshot taken | 2026-11-02 |
-| Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json`, `memory-schema.json` |
+| Source | `a4fffb3` plus the working-tree memory contract (2026-11-02) and the working-tree skill-eval contract (2026-11-11); each snapshot is refreshed again when its change lands |
+| Snapshot taken | 2026-11-11 |
+| Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json`, `memory-schema.json`, `skill-eval-schema.json` |
 
 ## Rule
 
@@ -38,6 +38,10 @@ edited in the *same* change as the snapshot, never silently.
 - **`memory-schema.json`** → the typed-memory and delegate vocabulary; the Go
   store implements it and never treats it as authority.
 - **`overlay.json`** → the WireGuard-overlay assumption behind `internal/mesh`.
+- **`skill-eval-schema.json`** → `internal/delegates`: the closed verdict,
+  subject-kind and evaluator-kind vocabulary and the forbidden authority
+  fields. The broker validates and stores the record; the canonical digest
+  stays with `shared/sparknet-skill-eval.py`, which is the consuming gate.
 
 ## Non-goal
 

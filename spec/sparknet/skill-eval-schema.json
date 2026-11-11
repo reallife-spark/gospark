@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "contract": "skill-eval",
+  "description": "The record shape for a skill-derived evaluation of one AI work product. A record binds a named review skill (code-review, tdd, impl-validator, ...) and its verdict (pass, warn, fail) to a digest-bound subject: a delegate run, a self-improve candidate, a plan, an RFI answer or another skill. The record is audit evidence consumed by the promotion gate and the Master audit surface. It is never authority and never knowledge.",
+  "why": "The installed engineering skills produce structured judgement only as interactive prose, so a promotion can succeed on benchmark numbers while its review is failing or absent. One canonical, digest-bound record gives the gate a checkable input, gives the Master an audit trail, and gives the skill suite a way to be evaluated itself. Refusing authority-shaped fields keeps a verdict from being smuggled into a grant.",
+  "canonical_source": {
+    "implementation": "shared/sparknet-skill-eval.py",
+    "rule": "Where this file and shared/sparknet-skill-eval.py could disagree, that module is what runs. The schema is the normative statement and tests pin the agreement."
+  },
+  "verdicts": ["pass", "warn", "fail"],
+  "subject_kinds": ["delegate-run", "self-improve-candidate", "plan", "rfi-answer", "skill"],
+  "evaluator_kinds": ["agent", "harness", "human"],
+  "finding_severities": ["info", "warn", "block"],
+  "skill_origins": ["mattpocock", "wiki", "understand", "local"],
+  "record": {
+    "required": [
+      "schema",
+      "eval_id",
+      "skill",
+      "subject",
+      "verdict",
+      "findings",
+      "evaluator",
+      "created_at",
+      "body_sha256"
+    ],
+    "fields": {
+      "schema": {
+        "type": "string",
+        "const": "sparknet-skill-eval/1",
+        "purpose": "Contract identifier."
+      },
+      "eval_id": {
+        "type": "string",
+        "bounds": "1..120 characters, single line",
+        "purpose": "Stable identifier for this evaluation, unique per subject revision."
+      },
+      "skill": {
+        "type": "object",
+        "required": ["name", "origin"],
+        "fields": {
+          "name": "the skill directory name, e.g. code-review",
+          "origin": "one of skill_origins",
+          "digest": "optional sha256 of the skill file the verdict was produced under"
+        },
+        "purpose": "Which review skill produced the verdict, and optionally which bytes of it."
+      },
+      "subject": {
+        "type": "object",
+        "required": ["kind", "ref"],
+        "fields": {
+          "kind": "one of subject_kinds",
+          "ref": "1..512 characters; run id, candidate id, plan path or answer id",
+          "digest": "optional sha256 binding the evaluated bytes"
+        },
+        "purpose": "What was evaluated. The ref is data, never a path a caller may follow."
+      },
+      "verdict": {
+        "type": "string",
+        "enum": ["pass", "warn", "fail"],
+        "purpose": "The gate reads pass as promote-eligible, warn as advisory and fail as blocking."
+      },
+      "findings": {
+        "type": "array",
+        "max_items": 100,
+        "items": {
+          "severity": "one of finding_severities",
+          "rule": "1..200 characters; the stable rule id from the skill",
+          "message": "1..2000 characters; what and where, never a secret",
+          "location": "optional 1..512 characters; file or section reference"
+        },
+        "purpose": "The evidence behind the verdict."
+      },
+      "evaluator": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "fields": {
+          "kind": "one of evaluator_kinds",
+          "id": "the evaluator identity, e.g. project-reviewer or the harness name",
+          "model": "optional pinned model tag when an agent evaluated"
+        },
+        "purpose": "Who produced the verdict, so a result can be reproduced or discounted."
+      },
+      "created_at": {
+        "type": "string",
+        "format": "ISO-8601 UTC",
+        "purpose": "When the evaluation completed."
+      },
+      "body_sha256": {
+        "type": "string",
+        "format": "lowercase sha256 hex",
+        "purpose": "Digest of the canonical record body without this field; tamper evidence."
+      }
+    }
+  },
+  "verdict_consistency": {
+    "pass": "no warn or block findings",
+    "warn": "at least one finding and no block finding",
+    "fail": "at least one block finding"
+  },
+  "forbidden_fields": [
+    "capability",
+    "grant",
+    "signature",
+    "approve",
+    "application",
+    "apply",
+    "secret",
+    "token",
+    "key"
+  ],
+  "digest": {
+    "algorithm": "sha256",
+    "canonical_json": "sort_keys=true, separators=(',', ':'), ensure_ascii=true, utf-8",
+    "excluded_field": "body_sha256"
+  },
+  "boundaries": {
+    "authority": "none: a record cannot grant, revoke, approve, apply or sign",
+    "knowledge": "none: a record is audit evidence and never enters a vault, a KB, a corpus or an RFI answer",
+    "storage": "a run record, an audit log or a signed artefact; never a knowledge page"
+  }
+}

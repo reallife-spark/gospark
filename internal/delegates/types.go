@@ -108,6 +108,7 @@ type Result struct {
 	Verification string         `json:"verification,omitempty"`
 	Verified     bool           `json:"verified"`
 	Metadata     map[string]any `json:"metadata,omitempty"`
+	SkillEval    map[string]any `json:"skill_eval,omitempty"`
 	Error        string         `json:"error,omitempty"`
 	ErrorCode    string         `json:"error_code,omitempty"`
 }

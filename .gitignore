@@ -9,6 +9,9 @@
 *.key
 *.pem
 
+# Machine-local work-item tracker (sparknet-issue/1: issues are not commits).
+/.scratch/
+
 # Test / coverage artefacts
 *.out
 coverage.txt

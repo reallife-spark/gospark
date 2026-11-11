@@ -246,6 +246,11 @@ func (b *Broker) runTask(ctx context.Context, run *Run) {
 	}
 	result, err := executor.Run(taskCtx, run, emit)
 	run.Result = result
+	if evalErr := ValidateSkillEval(result.SkillEval); evalErr != nil {
+		run.Result.Error = evalErr.Error()
+		run.Result.ErrorCode = "skill_eval_invalid"
+		err = evalErr
+	}
 	switch {
 	case budgetHit:
 		run.Status = BudgetExceeded
