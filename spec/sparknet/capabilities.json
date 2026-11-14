@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "contract": "capabilities",
   "description": "The complete, closed capability vocabulary. The Master grants these by signing; a peer holds only what the Master signed. Anything not listed here is rejected by both roles. Adding a capability is a contract change and must land here first.",
   "known_capabilities": [
@@ -11,9 +11,13 @@
     "cluster-dispatch",
     "cluster-serve",
     "admin-supervise",
+    "sandbox-supervise",
     "cross-department-share",
     "model-uplift",
-    "memory-supervise"
+    "memory-supervise",
+    "issue-report",
+    "model-route",
+    "memory-federate"
   ],
   "definitions": {
     "telemetry": {
@@ -41,25 +45,31 @@
       "grants": "Cast one signed vote in a master election.",
       "holder": "peer",
       "sensitive": false,
-      "note": "Every member holds this, because election is what makes a master at all. It is deliberately weak: a vote is deduplicated by member identity, so casting three votes for yourself is still one vote. It confers nothing — it is a say, not a grant. See contracts/consensus-protocol.md."
+      "note": "Every member holds this, because election is what makes a master at all. It is deliberately weak: a vote is deduplicated by member identity, so casting three votes for yourself is still one vote. It confers nothing \u2014 it is a say, not a grant. See contracts/consensus-protocol.md."
     },
     "cluster-dispatch": {
       "grants": "Submit a cluster job: split a prompt into signed subtasks and fan them out, as separate one-to-one requests, to the nodes this node is connected to.",
       "holder": "peer",
       "sensitive": false,
-      "note": "The initiate side of cluster inference. Launching a job makes no peer act by itself: where governance is master_governed (three or more members) the Master must ratify the job before any cluster-serve node accepts a subtask, and at peer_pair (exactly two members) the initiator signs it directly. It is not sensitive for that reason — the gate that makes a peer run work is cluster-serve on the receiving node plus, at three or more, the Master's ratification."
+      "note": "The initiate side of cluster inference. Launching a job makes no peer act by itself: where governance is master_governed (three or more members) the Master must ratify the job before any cluster-serve node accepts a subtask, and at peer_pair (exactly two members) the initiator signs it directly. It is not sensitive for that reason \u2014 the gate that makes a peer run work is cluster-serve on the receiving node plus, at three or more, the Master's ratification."
     },
     "cluster-serve": {
       "grants": "Accept a signed cluster subtask over the overlay, run it against this node's own model and local knowledge, and return an attested result.",
       "holder": "peer",
       "sensitive": true,
-      "note": "The second sensitive capability after guard-apply, sensitive in the confidentiality direction rather than the mutation direction: the holder lets delegated inference read its local knowledge and returns the result to the cluster. It generalises the compute-serve proposal (COMPUTE_CAPABILITY_DESIGN.md) from a closed operation whitelist to a signed prompt. A node running its own prompts is not gated by this — only delegated subtasks are — and any action a served answer triggers still passes the node's own guard."
+      "note": "The second sensitive capability after guard-apply, sensitive in the confidentiality direction rather than the mutation direction: the holder lets delegated inference read its local knowledge and returns the result to the cluster. It generalises the compute-serve proposal (COMPUTE_CAPABILITY_DESIGN.md) from a closed operation whitelist to a signed prompt. A node running its own prompts is not gated by this \u2014 only delegated subtasks are \u2014 and any action a served answer triggers still passes the node's own guard."
     },
     "admin-supervise": {
       "grants": "Submit signed admin-requests that make a peer perform Open WebUI administrative actions (list/approve users, change roles, read chats and Knowledge) against its own setup.",
       "holder": "master",
       "sensitive": true,
-      "note": "The cross-node administration capability (ADMIN_FEDERATION_DESIGN.md, fabric PLAN Step 29). holder: master — the authority to *issue* sits with the elected key holder; a peer holding this in its registry entry accepts Master-signed admin-requests in guard-protocol order and executes them against the peer's own Open WebUI with the peer's own service-account token, which never leaves the node. The bridge /admin/* route exists and verifies, but authorises nothing until the real registry carries a signed grant of this capability — the same inert posture as cluster-dispatch."
+      "note": "The cross-node administration capability (ADMIN_FEDERATION_DESIGN.md, fabric PLAN Step 29). holder: master \u2014 the authority to *issue* sits with the elected key holder; a peer holding this in its registry entry accepts Master-signed admin-requests in guard-protocol order and executes them against the peer's own Open WebUI with the peer's own service-account token, which never leaves the node. The bridge /admin/* route exists and verifies, but authorises nothing until the real registry carries a signed grant of this capability \u2014 the same inert posture as cluster-dispatch."
+    },
+    "sandbox-supervise": {
+      "grants": "Submit signed sandbox-requests that make a peer inspect, create, start, stop or delete OpenShell execution sandboxes, and read or change their sandbox policy, against its own node.",
+      "holder": "master",
+      "sensitive": true,
+      "note": "The execution-sandbox counterpart to admin-supervise. holder: master \u2014 the authority to *issue* sits with the elected key holder; a peer holding this in its registry entry accepts Master-signed sandbox-requests in guard-protocol order and executes them against its own OpenShell gateway with the peer's own local credentials, which never leave the node. The bridge has no `/sandbox/*` route yet: the route class is reserved and no request is accepted until peer PLAN 20E implements and tests it. The capability is inert until both a signed registry grant and that route exist \u2014 the same inert posture as cluster-dispatch. It grants no read of the user's vault content and no authority to widen a sandbox's mounts; the peer's local execution whitelist still decides every action."
     },
     "cross-department-share": {
       "grants": "Offer or accept a share with a node whose Master-attested department differs from this node's own.",
@@ -78,10 +88,28 @@
       "holder": "master",
       "sensitive": true,
       "note": "Sensitive in the confidentiality direction. The peer applies the request to its local memory service and audits it; the Master stores no permanent mirror. It grants no write to the user's vault and never becomes an answer corpus. The Master AI must not ingest the returned content."
+    },
+    "issue-report": {
+      "grants": "Push redacted local work items to the Master for tracking.",
+      "holder": "peer",
+      "sensitive": false,
+      "note": "Work items are operational data, not knowledge and not authority. The grant lets a peer send a title, body, status, labels and links over the signed 8090 issue route; it opens no vault, copies no page and lets the Master issue no command. The Master records and triages; it never acts on an issue as a capability. See contracts/issue-schema.json."
+    },
+    "model-route": {
+      "grants": "Accept a signed inference request against this node's local model router and return the result with source provenance.",
+      "holder": "peer",
+      "sensitive": false,
+      "note": "Data-plane only. The request carries a data_class; user-class content is refused remotely. It grants no local knowledge read, no capability and no authority."
+    },
+    "memory-federate": {
+      "grants": "Read another node's fabric/admin memory through the signed memory router with an explicit scope.",
+      "holder": "peer",
+      "sensitive": true,
+      "note": "Fabric/admin only. User vault memory is never returned over this capability; Master support for user memory remains on memory-supervise. No mirror, no write and no cross-vault query."
     }
   },
   "master_capabilities": {
-    "note": "The Master's authority is not expressed as a granted capability — it is possession of the Ed25519 private key, which never leaves the Master. A peer holding this vocabulary but not that key can verify but cannot grant, revoke, or escalate anything. Under the election model this is unchanged in kind: the elected master holds an operational key because a cluster trust root named it, and that root required unanimity. Possession is still the mechanism; a vote is not a substitute for it.",
+    "note": "The Master's authority is not expressed as a granted capability \u2014 it is possession of the Ed25519 private key, which never leaves the Master. A peer holding this vocabulary but not that key can verify but cannot grant, revoke, or escalate anything. Under the election model this is unchanged in kind: the elected master holds an operational key because a cluster trust root named it, and that root required unanimity. Possession is still the mechanism; a vote is not a substitute for it.",
     "implied_by_private_key": [
       "sign-authorization",
       "revoke-node",
@@ -89,7 +117,7 @@
     ]
   },
   "escalation_note": "capabilities and overlay_ipv4 are inside the signed envelope (see contracts/identity-schema.json), so editing them in the registry file invalidates the signature. A node with registry write access can revoke (a safe denial) but cannot escalate to guard-apply.",
-  "reformation_note": "Re-formation (a chained master change, policy B) introduces no new capability: it re-uses the election capability for a new root, the existing revoke for any removal, and the existing share/registry path to pull the chained lineage. There is deliberately no 're-form' grant a node could hold — the direction of a chained root (previous_root_id naming the root in force) is what a signer and a verifier check, so no capability can be added to it without breaking the signature.",
+  "reformation_note": "Re-formation (a chained master change, policy B) introduces no new capability: it re-uses the election capability for a new root, the existing revoke for any removal, and the existing share/registry path to pull the chained lineage. There is deliberately no 're-form' grant a node could hold \u2014 the direction of a chained root (previous_root_id naming the root in force) is what a signer and a verifier check, so no capability can be added to it without breaking the signature.",
   "share_types": {
     "purpose": "A share type states what a share actually conveys. Naming the type is not bookkeeping: a receiver that accepts kb-view must not thereby accept full, so the type is inside the signed share grant and is checked at both ends.",
     "closed_vocabulary": true,
@@ -166,7 +194,7 @@
     }
   },
   "trust_levels": {
-    "purpose": "What a node is believed to be, independent of what it is permitted to do. A node can be permitted and distrusted — that combination is the normal state of both sides of an unratified share, and collapsing the two would remove the signal that something needs review.",
+    "purpose": "What a node is believed to be, independent of what it is permitted to do. A node can be permitted and distrusted \u2014 that combination is the normal state of both sides of an unratified share, and collapsing the two would remove the signal that something needs review.",
     "levels": {
       "authenticated": {
         "means": "Identity is in the signed registry, the fingerprint matches, and no share against it is unresolved. A ratified share may still carry the `flagged` marker in `retained_flags` as evidence; the retained marker alone does not lower this level.",

@@ -26,6 +26,8 @@ const (
 	CapModelUplift      Capability = "model-uplift"
 	CapMemorySupervise  Capability = "memory-supervise"
 	CapIssueReport      Capability = "issue-report"
+	CapModelRoute       Capability = "model-route"
+	CapMemoryFederate   Capability = "memory-federate"
 
 	// CapCrossDepartmentShare lets a node share with one whose Master-attested
 	// department differs from its own. Inside a department no extra grant is
@@ -49,6 +51,8 @@ var KnownCapabilities = []Capability{
 	CapModelUplift,
 	CapMemorySupervise,
 	CapIssueReport,
+	CapModelRoute,
+	CapMemoryFederate,
 }
 
 var knownSet = func() map[Capability]struct{} {
@@ -69,6 +73,7 @@ var sensitive = map[Capability]bool{
 	CapCrossDepartmentShare: true,
 	CapModelUplift:          true,
 	CapMemorySupervise:      true,
+	CapMemoryFederate:       true,
 }
 
 // MasterImpliedCapabilities are not granted to any peer: they are *implied by
