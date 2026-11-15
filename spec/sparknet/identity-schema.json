@@ -70,8 +70,8 @@
     "fields": {
       "version": {
         "type": "string",
-        "purpose": "root schema version; \"1.2\" is current (chained supersession + admission epoch + reduced-membership removal proofs), \"1.1\" is the chained schema without epoch, \"1.0\" is the pre-chain schema; all three are still accepted for roots already in force",
-        "compatibility": "A 1.0 root signed the fields below WITHOUT previous_root_id; a 1.1 root signed them WITHOUT epoch. Each keeps verifying against its original bytes and id, because the canonical form is version-aware. A 1.1 root chains to a 1.0 parent by naming that parent's 1.0-computed root_id; a 1.2 root chains to a 1.1 parent by naming it and taking epoch 1 (the older parent is treated as height 0)."
+        "purpose": "root schema version; \"1.3\" is current (chained supersession + admission + reduced-membership removal proofs), \"1.2\" is the chained schema with epoch but no join admission, \"1.1\" is the chained schema without epoch, \"1.0\" is the pre-chain schema; all are still accepted for roots already in force",
+        "compatibility": "A 1.0 root signed the fields below WITHOUT previous_root_id; a 1.1 root signed them WITHOUT epoch. Each keeps verifying against its original bytes and id, because the canonical form is version-aware. A 1.1 root chains to a 1.0 parent by naming that parent's 1.0-computed root_id; a 1.2 root chains to a 1.1 parent by naming it and taking epoch 1 (the older parent is treated as height 0). A 1.3 root has the same signed fields as 1.2 and differs only in the trust-path admission rule."
       },
       "nonce": {
         "type": "string",
@@ -117,7 +117,8 @@
       "the registry being verified is signed under master_pubkey as this root names it",
       "on the trust path (a root already held), the candidate names the held root as previous_root_id \u2014 supersession is a chain, not a free replacement (unchained_root otherwise)",
       "on the trust path, a 1.2+ candidate's epoch is exactly the held root's epoch plus one (unchained_root otherwise)",
-      "on the trust path, a candidate whose membership is a strict subset of the held root's is refused unless its dropped set equals exactly the set its removal proofs evidence \u2014 one proof per dropped member, no proof for a member that stays (missing_removal_proof / unexpected_removal_proof otherwise)"
+      "on the trust path, a candidate whose membership is a strict subset of the held root's is refused unless its dropped set equals exactly the set its removal proofs evidence \u2014 one proof per dropped member, no proof for a member that stays (missing_removal_proof / unexpected_removal_proof otherwise)",
+      "on the trust path, a candidate whose membership is a strict superset of the held root's is refused unless it is exactly a 2 \u2192 3 admission: one new member, no drop, unchanged master_node_id and master_pubkey, the four signed fields of existing member records unchanged, distinct new-member fingerprint/WireGuard/cluster key, master_pubkey distinct from every member cluster_pubkey, no removal proofs, schema 1.3 or newer, and all three signatures (admission_not_allowed / admission_master_change / admission_member_changed / admission_duplicate_key / admission_operational_key otherwise)"
     ],
     "acceptance_rules_note": "The third and fourth rules are what stop a root from naming members while being signed by strangers, and from binding an operational key nothing ever recognised. Without them the first two rules are decorative.",
     "unanimity": {
@@ -137,6 +138,7 @@
     "reformation": {
       "on_master_change": "policy B: the new root is CHAINED to the root in force via previous_root_id (one of the signed fields), with epoch one above the parent's. On the trust path verify_root refuses any candidate that does not name the held root as its predecessor (unchained_root), and verify_chain(roots) lets a peer that missed a re-formation verify the whole lineage newest-first down to a genesis root. The ledger remains the last line of defence: check_not_reverted is monotonic, adopting a root whose previous_root_id names the ledger's root in force without a flag and refusing anything else without --accept-requalification. News of a re-formation is PULLED along the existing share/registry path as successive chained roots, never broadcast by the superseded master. See consensus-protocol.md, Re-formation.",
       "on_blocked_election": "policy B, adopted (schema 1.2, fabric PLAN.md Step 21): an unreachable member is dropped by forming a chained, strict-subset root whose members are exactly the survivors, each survivor co-signing. The drop is EVIDENCED by one removal proof per dropped member, carried alongside the root but not one of the signed fields. verify_root refuses a reduced root unless its dropped set equals exactly the set the proofs evidence (missing_removal_proof / unexpected_removal_proof otherwise). Two proof kinds: 'revocation' (signed by the parent root's elected Master with its operational key - the contract's existing one-signature revoke made durable) and 'attested' (signed by every surviving member with its cluster key). A lone survivor holds only the proof (a tombstone) and must re-witness a new member: the minimum of two is not relaxed. See consensus-protocol.md, Re-formation.",
+      "on_admission": "schema 1.3, fabric PLAN.md Step 112: a 2-member pair admits one new member by forming a chained 3-member child root. The Master and master_pubkey are unchanged, the four signed fields of existing member records are unchanged, the new member's identity material is distinct, master_pubkey is distinct from every member cluster_pubkey, no member is dropped, no removal proof is carried, and all three members co-sign. verify_root accepts the superset only under these conditions (admission_not_allowed / admission_master_change / admission_member_changed / admission_duplicate_key / admission_operational_key otherwise). Every member compares the formed root's four signed member fields to the out-of-band roster before co-signing and adopts the child: the Master changes its role/operational fields, the existing peer and the new member persist trust_root only, and the adopting node checks that its local cluster key matches the member record the child names for it. The new node's registry entry is a separate Master-signed artifact; cluster membership is not a registry entry. See consensus-protocol.md, Admission.",
       "not_a_bypass": "re-formation cannot install a master without unanimity among the members it names; a node removed by re-formation cannot re-form its way back alone"
     },
     "cluster_key_use": "A cluster key signs only the root. Because every root needs all members to sign, one stolen cluster key cannot install a master on its own \u2014 it is one of the required signatures."
@@ -220,7 +222,17 @@
       "parent_grant_id": {
         "type": "string|null",
         "purpose": "the grant a subagent inherited, when this grant was delegated",
-        "delegation_note": "A subagent inherits its parent's grant unchanged \u2014 authority is not re-derived per child. Authority therefore traces to the parent grant, while the ledger separately records the acting child session id so audit traces to the child. Both are needed: the first says what was permitted, the second says who used it."
+        "delegation_note": "A subagent inherits its parent's grant unchanged — authority is not re-derived per child. Authority therefore traces to the parent grant, while the ledger separately records the acting child session id so audit traces to the child. Both are needed: the first says what was permitted, the second says who used it."
+      },
+      "operator_os": {
+        "type": "object|null",
+        "fields": ["uid", "euid", "username", "groups", "is_root"],
+        "purpose": "The OS identity of the human operating the session, attested when the grant is minted. It CAPS what the agent may do on that computer: a mutation needing a privilege the attested operator does not hold is refused, whatever the serving daemon's own uid is.",
+        "why_not_the_daemon_uid": "A bridge or WebUI container running as root would otherwise hand every session root, making the ceiling a property of how the node was started rather than of who is driving it. The cap has to travel with the human, so it is signed into the grant they present.",
+        "attested_at_mint": "mint_grant is master-side or an offline operator act, so the minter is acting for that human and can attest the identity it is running as. Null means no OS identity was attested, which caps the session at nothing rather than pretending to know it — an absent attestation must never be read as root.",
+        "inside_the_signature": "Yes, via GRANT_FIELDS. An unsigned ceiling could be raised by whoever presents the grant, which is exactly the privilege the field exists to deny.",
+        "normalisation": "shared/sparknet-authz.py::normalise_operator_os refuses a wrong type rather than coercing it, and sorts+deduplicates groups, so two orderings of one set cannot produce two signatures. Undeclared fields are refused: the projection is a closed field list.",
+        "is_root_note": "A boolean, never inferred from uid == 0, because the two can disagree and the disagreement is exactly what an enforcement check must not guess about."
       }
     },
     "inheritable": [

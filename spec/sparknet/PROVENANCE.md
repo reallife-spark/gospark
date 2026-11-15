@@ -8,8 +8,8 @@ checkout of the fabric repo alongside it.
 | Field | Value |
 |---|---|
 | Source repository | `/mnt/knowledge/sparknet` (`contracts/`) |
-| Source | `a4fffb3` plus the working-tree memory contract (2026-11-02) and the working-tree skill-eval contract (2026-11-11); each snapshot is refreshed again when its change lands |
-| Snapshot taken | 2026-11-11 |
+| Source | `8d573c8` plus the working-tree memory contract (2026-11-02) and the working-tree skill-eval contract (2026-11-11); the identity snapshot is refreshed for schema 1.3 admission (2026-11-15) |
+| Snapshot taken | 2026-11-15 |
 | Files | `capabilities.json`, `ports.json`, `identity-schema.json`, `overlay.json`, `memory-schema.json`, `skill-eval-schema.json` |
 
 ## Rule
