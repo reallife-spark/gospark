@@ -89,7 +89,7 @@ type reportSpec struct {
 // subscription and be dropped; a real telemetry loop is at-least-once.
 func reportUntilEligible(t *testing.T, ctx context.Context, shared bus.Bus, app *App, specs []reportSpec, want int) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(adoptTimeout)
 	for {
 		for _, s := range specs {
 			report(t, ctx, shared, app, s.node, s.tel)
@@ -249,7 +249,7 @@ func TestPlaceAndDispatchToChosenNode(t *testing.T) {
 		{"node-a", gpuTel(70*gib, 80*gib)}, // 10 GiB free
 		{"node-b", gpuTel(10*gib, 80*gib)}, // 70 GiB free
 	}
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(adoptTimeout)
 	for {
 		for _, s := range specs {
 			report(t, ctx, shared, control, s.node, s.tel)

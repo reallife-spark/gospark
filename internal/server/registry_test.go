@@ -14,6 +14,11 @@ import (
 	"github.com/reallife-spark/goSpark/internal/identity"
 )
 
+// adoptTimeout is deliberately generous: the in-memory bus and the app
+// goroutines are fast on an idle host, but the hosted gate runs the suite
+// beside other work and a 3-second adoption wait was a real flake.
+const adoptTimeout = 15 * time.Second
+
 // TestRegistryGovernsDispatchAndRevocation proves the registry, not the node, is
 // the authority: a task is refused once the Master revokes the node, and the
 // agent itself refuses to execute even if a task bypasses the control plane.
@@ -93,7 +98,7 @@ func TestRegistryGovernsDispatchAndRevocation(t *testing.T) {
 
 func waitDigestMatch(t *testing.T, control, agent *App) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(adoptTimeout)
 	for {
 		if d := control.RegistryDigest(); d != "" && d == agent.RegistryDigest() {
 			return
@@ -107,7 +112,7 @@ func waitDigestMatch(t *testing.T, control, agent *App) {
 
 func waitAgentRevoked(t *testing.T, agent *App) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(adoptTimeout)
 	for {
 		if !agent.registryAllowsSelf() {
 			return
